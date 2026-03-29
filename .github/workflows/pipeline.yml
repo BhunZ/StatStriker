@@ -1,0 +1,60 @@
+name: Weekly Pipeline
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC (1 PM in Bangkok / ICT)
+    - cron: "0 6 * * 1"
+  workflow_dispatch:       # Allow manual trigger from GitHub UI
+
+permissions:
+  contents: write          # Needed for git push
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline (auto mode)
+        env:
+          SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+        run: |
+          set +e
+          python main.py --auto
+          EXIT_CODE=$?
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_ENV"
+          # Exit codes 0, 2, 3 are all success; only 1 is error
+          if [ "$EXIT_CODE" -eq 1 ]; then
+            echo "Pipeline failed with error"
+            exit 1
+          fi
+          echo "Pipeline completed with exit code $EXIT_CODE"
+
+      - name: Commit and push changes
+        if: env.exit_code == '2' || env.exit_code == '3'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/models/ data/processed/ pipeline_state.json
+          git diff --staged --quiet && echo "No changes to commit" && exit 0
+          if [ "${{ env.exit_code }}" == "3" ]; then
+            MSG="chore: retrain models ($(date -u +%Y-%m-%d))"
+          else
+            MSG="chore: update data ($(date -u +%Y-%m-%d))"
+          fi
+          git commit -m "$MSG"
+          git push
