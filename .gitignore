@@ -148,5 +148,9 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Scrapers (kept local only)
+scrapers/
+Scraping Data.py
+
 # Claude Code
 .claude/
