@@ -146,8 +146,7 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Scrapers (kept local only)
-scrapers/
+# Local-only scripts
 Scraping Data.py
 smoke_test.py
 

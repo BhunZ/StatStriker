@@ -56,11 +56,7 @@ from config import (
     PROCESSED_DIR,
     MODEL_OUTPUT_DIR,
 )
-try:
-    from scrapers import FBRefScraper, UnderstatScraper
-    _HAS_SCRAPERS = True
-except ImportError:
-    _HAS_SCRAPERS = False
+from scrapers import FBRefScraper, UnderstatScraper
 from processors import EntityResolver, SchemaNormalizer, FeatureEngineer
 from storage import StorageManager, StorageBackend
 
@@ -340,22 +336,19 @@ def run_auto_mode(store: StorageBackend, tiers: list[int] | None = None) -> int:
     # Step 1: Decide whether to scrape
     # ------------------------------------------------------------------
     if _should_scrape(state):
-        if not _HAS_SCRAPERS:
-            logger.warning("=== AUTO: Scrape due but scrapers not available — skipping ===")
-        else:
-            logger.info("=== AUTO: Scraping new data ===")
-            fbref_df = run_fbref_scrape()
-            run_fbref_team_stats_scrape()
-            us_scraper = UnderstatScraper(save_raw=True)
-            understat_df = us_scraper.scrape_all()
-            understat_deep_df = us_scraper.scrape_all_deep_stats()
-            features = run_processing(fbref_df, understat_df, understat_deep_df)
+        logger.info("=== AUTO: Scraping new data ===")
+        fbref_df = run_fbref_scrape()
+        run_fbref_team_stats_scrape()
+        us_scraper = UnderstatScraper(save_raw=True)
+        understat_df = us_scraper.scrape_all()
+        understat_deep_df = us_scraper.scrape_all_deep_stats()
+        features = run_processing(fbref_df, understat_df, understat_deep_df)
 
-            state["last_scrape_date"] = date.today().isoformat()
-            state["last_scrape_matches"] = len(features)
-            store.save_state(state)
-            exit_code = 2
-            logger.info("Scrape + process complete: %d total matches", len(features))
+        state["last_scrape_date"] = date.today().isoformat()
+        state["last_scrape_matches"] = len(features)
+        store.save_state(state)
+        exit_code = 2
+        logger.info("Scrape + process complete: %d total matches", len(features))
     else:
         logger.info("=== AUTO: Scrape not due — using existing data ===")
 
