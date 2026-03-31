@@ -149,6 +149,7 @@ Thumbs.db
 # Scrapers (kept local only)
 scrapers/
 Scraping Data.py
+smoke_test.py
 
 # Claude Code
 .claude/
