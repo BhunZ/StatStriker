@@ -39,8 +39,10 @@ SCRAPER_API_KEY_SECONDARY: str = os.environ.get("SCRAPER_API_KEY_SECONDARY", "")
 SCRAPER_API_BASE: str = "http://api.scraperapi.com"
 
 if not SCRAPER_API_KEY:
-    raise EnvironmentError(
-        "SCRAPER_API_KEY is not set. Add it to your .env file or environment."
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "SCRAPER_API_KEY is not set — scrapers will not work. "
+        "Add it to your .env file or environment if you need to scrape."
     )
 
 # ---------------------------------------------------------------------------
