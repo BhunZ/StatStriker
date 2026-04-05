@@ -1,0 +1,2803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StatStriker - Premier League Match Predictor</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23111827' stroke='%2310b981' stroke-width='1.5'/%3E%3Cpolygon points='16,6 20,12 16,14 12,12' fill='%2310b981' opacity='0.6'/%3E%3Cpolygon points='20,12 26,14 24,20 20,18 16,14' fill='%2310b981' opacity='0.4'/%3E%3Cpolygon points='12,12 16,14 12,18 8,20 6,14' fill='%2310b981' opacity='0.4'/%3E%3Cpolygon points='16,14 20,18 18,24 14,24 12,18' fill='%2310b981' opacity='0.5'/%3E%3C/svg%3E">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #080b12;
+    color: #c8cdd8;
+    min-height: 100vh;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+  }
+
+  /* ── Utility ───────────────────────────── */
+  .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Custom Scrollbar ────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+  * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent; }
+
+  /* ── Chart Tooltip ─────────────────── */
+  .chart-container { position: relative; }
+  .chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(17, 24, 39, 0.95);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #e5e7eb;
+    white-space: nowrap;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.15s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  .chart-tooltip.visible { opacity: 1; }
+  .chart-crosshair {
+    position: absolute;
+    top: 0;
+    width: 1px;
+    background: rgba(255,255,255,0.15);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .chart-crosshair.visible { opacity: 1; }
+
+  :focus-visible {
+    outline: 2px solid #10b981;
+    outline-offset: 2px;
+  }
+
+  a:focus-visible { border-radius: 4px; }
+
+  /* ── Skip Nav ──────────────────────────── */
+  .skip-nav {
+    position: absolute;
+    top: -100%;
+    left: 16px;
+    background: #10b981;
+    color: #080b12;
+    padding: 8px 16px;
+    border-radius: 0 0 8px 8px;
+    font-weight: 600;
+    font-size: 13px;
+    z-index: 10000;
+    text-decoration: none;
+    transition: top 0.2s;
+  }
+  .skip-nav:focus { top: 0; }
+
+  /* ── Nav ──────────────────────────────── */
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 48px;
+    height: 64px;
+    border-bottom: 1px solid #161b2e;
+    background: rgba(10, 14, 24, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-left { display: flex; align-items: center; gap: 48px; }
+  .nav-logo {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    color: #fff;
+    cursor: pointer;
+  }
+  .nav-logo .dot { color: #10b981; }
+  .nav-links { display: flex; gap: 8px; }
+  .nav-links a {
+    color: #9ca3af;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: color 0.2s, background 0.2s;
+    padding: 8px 14px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    cursor: pointer;
+  }
+  .nav-links a:hover { color: #e5e7eb; background: rgba(255,255,255,0.04); }
+  .nav-links a.active { color: #e5e7eb; background: rgba(16, 185, 129, 0.08); }
+
+  /* ── Animations ────────────────────────── */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(15px); }
+  }
+  @keyframes popIn {
+    0% { opacity: 0; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  @keyframes spinBorder {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ── Skeleton Loaders ──────────────────────── */
+  .skeleton {
+    background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+    background-size: 800px 100%;
+    animation: shimmer 1.5s infinite linear;
+    border-radius: 8px;
+  }
+  .skeleton-line { height: 14px; margin-bottom: 10px; }
+  .skeleton-line.w-80 { width: 80%; }
+  .skeleton-line.w-60 { width: 60%; }
+  .skeleton-line.w-40 { width: 40%; }
+  .skeleton-block { height: 180px; border-radius: 12px; }
+
+  /* ── Error State ───────────────────────── */
+  .error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+    text-align: center;
+    gap: 12px;
+  }
+  .error-state-title { font-size: 15px; font-weight: 700; color: #f3f4f6; }
+  .error-state-desc { font-size: 13px; color: #9ca3af; max-width: 360px; line-height: 1.6; }
+  .error-state-retry {
+    margin-top: 8px;
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.3s;
+  }
+  .error-state-retry:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  /* ── Share Button ──────────────────────── */
+  .share-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: 1px solid rgba(16, 185, 129, 0.15);
+    background: rgba(16, 185, 129, 0.06);
+    color: #10b981;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.3s, transform 0.2s;
+  }
+  .share-btn:hover {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.3);
+    transform: translateY(-1px);
+  }
+  .share-btn.copied {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: #10b981;
+  }
+
+  /* ── Container ─────────────────────────── */
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ── Glass Card ────────────────────────── */
+  .glass-card {
+    background: rgba(17, 24, 39, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+  }
+  .glass-card.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .glass-card.no-anim {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  /* ── Hero ───────────────────────────────── */
+  .hero {
+    padding: 72px 0 56px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px;
+    height: 500px;
+    background: radial-gradient(ellipse, rgba(16, 185, 129, 0.08) 0%, rgba(6, 182, 212, 0.04) 40%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+    animation: float 8s ease-in-out infinite;
+  }
+  .hero > * { position: relative; z-index: 1; }
+  .hero-subtitle {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: #10b981;
+    margin-bottom: 16px;
+    animation: fadeInUp 0.8s ease-out forwards;
+  }
+  .hero h1 {
+    font-size: 48px;
+    font-weight: 800;
+    color: #f9fafb;
+    line-height: 1.2;
+    letter-spacing: -1.5px;
+    max-width: 600px;
+    margin: 0 auto 12px;
+    opacity: 0;
+    animation: fadeInUp 0.8s ease-out 0.1s forwards;
+  }
+  .hero h1 .gradient-text {
+    background: linear-gradient(135deg, #10b981, #06b6d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero-desc {
+    font-size: 16px;
+    color: #9ca3af;
+    max-width: 480px;
+    margin: 0 auto 32px;
+    font-weight: 400;
+    opacity: 0;
+    animation: fadeInUp 0.8s ease-out 0.2s forwards;
+  }
+  .hero-stats-row {
+    opacity: 0;
+    animation: fadeInUp 0.8s ease-out 0.3s forwards;
+    display: flex;
+    justify-content: center;
+    gap: 56px;
+  }
+  .hero-stat { text-align: center; }
+  .stat-number {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 36px;
+    font-weight: 700;
+    color: #f3f4f6;
+    line-height: 1;
+    background: linear-gradient(135deg, #10b981, #06b6d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: 6px;
+  }
+
+  /* ── Divider ───────────────────────────── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #1f2937, transparent);
+    margin: 0 0 48px;
+    position: relative;
+  }
+
+  /* ── Section Tabs ──────────────────────── */
+  .section-page { display: none; }
+  .section-page.active { display: block; }
+
+  /* ── Predict Section ───────────────────── */
+  .predict-section { margin-bottom: 48px; }
+  .section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 24px;
+  }
+  .team-picker {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .team-picker select {
+    flex: 1;
+    padding: 12px 16px;
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    color: #e5e7eb;
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 40px;
+  }
+  .team-picker select:focus { outline: none; border-color: #10b981; }
+  .vs-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: #6b7280;
+    flex-shrink: 0;
+  }
+
+  /* ── Predict Button ────────────────────── */
+  .predict-btn {
+    padding: 12px 28px;
+    background: #10b981;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+  .predict-btn:hover { background: #059669; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+  .predict-btn:active { transform: translateY(0); }
+  .predict-btn:disabled {
+    opacity: 0.8;
+    cursor: wait;
+    background: #0a0e18;
+    border: 2px solid transparent;
+    background-image: linear-gradient(#0a0e18, #0a0e18), conic-gradient(#10b981, #06b6d4, #10b981);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+  }
+
+  /* ── Empty State ───────────────────────── */
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    position: relative;
+  }
+  .empty-state-ball {
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 50%;
+    opacity: 0.08;
+    margin-bottom: 24px;
+    filter: grayscale(0.5);
+  }
+  .empty-state-text {
+    font-size: 15px;
+    color: #6b7280;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+
+  /* ── Match Result ──────────────────────── */
+  .match-result { display: none; }
+  .match-result.show { display: block; }
+
+  .match-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    padding: 48px 0 32px;
+  }
+  .team-name {
+    font-size: 32px;
+    font-weight: 700;
+    color: #f9fafb;
+    min-width: 200px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .team-name.home { text-align: right; justify-content: flex-end; }
+  .team-name.away { text-align: left; justify-content: flex-start; }
+  .team-logo {
+    flex-shrink: 0;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));
+  }
+  .match-vs {
+    font-size: 16px;
+    font-weight: 400;
+    color: #6b7280;
+  }
+
+  /* ── Single Probability Bar ────────────── */
+  .prob-container { margin-bottom: 8px; }
+  .prob-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .prob-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .prob-pct.home { color: #10b981; }
+  .prob-pct.draw { color: #f59e0b; text-align: center; flex: 1; }
+  .prob-pct.away { color: #ef4444; }
+  .prob-bar-single {
+    height: 6px;
+    border-radius: 3px;
+    display: flex;
+    overflow: hidden;
+    background: #1f2937;
+  }
+  .prob-bar-single .seg-home {
+    background: #10b981;
+    width: 33.3%;
+    transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .prob-bar-single .seg-draw {
+    background: #f59e0b;
+    width: 33.3%;
+    transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .prob-bar-single .seg-away {
+    background: #ef4444;
+    width: 33.3%;
+    transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* ── Confidence Label ──────────────────── */
+  .confidence-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-top: 12px;
+  }
+  .confidence-high { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+  .confidence-moderate { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+  .confidence-low { background: rgba(156, 163, 175, 0.1); color: #9ca3af; }
+
+  .match-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: #9ca3af;
+  }
+  .match-meta .highlight {
+    font-family: 'JetBrains Mono', monospace;
+    color: #10b981;
+    font-weight: 500;
+  }
+
+  /* ── Model Agreement Strip ─────────────── */
+  .agreement-section { margin: 24px 0 0; }
+  .agreement-strip {
+    position: relative;
+    height: 32px;
+    background: rgba(17, 24, 39, 0.4);
+    border-radius: 16px;
+    margin: 8px 0;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+  .agreement-dot {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    transition: left 0.6s ease-out;
+    border: 2px solid #080b12;
+  }
+  .agreement-dot[data-model="ensemble"] { background: #10b981; width: 14px; height: 14px; z-index: 2; }
+  .agreement-dot[data-model="dixon_coles"] { background: #06b6d4; }
+  .agreement-dot[data-model="bivariate_poisson"] { background: #8b5cf6; }
+  .agreement-dot[data-model="xg_dixon_coles"] { background: #f59e0b; }
+  .agreement-dot[data-model="feature_poisson"] { background: #ec4899; }
+  .agreement-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #6b7280;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .agreement-verdict {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  /* ── Top Scorelines ────────────────────── */
+  .scorelines-section { margin: 24px 0; }
+  .scoreline-chips {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .scoreline-chip {
+    background: rgba(17, 24, 39, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 14px 22px;
+    text-align: center;
+    transition: border-color 0.2s, transform 0.2s;
+    min-width: 80px;
+    cursor: default;
+  }
+  .scoreline-chip:first-child {
+    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.06);
+  }
+  .scoreline-chip:hover {
+    transform: translateY(-2px);
+    border-color: rgba(16, 185, 129, 0.2);
+  }
+  .scoreline-chip .score {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: #f3f4f6;
+  }
+  .scoreline-chip .pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 2px;
+  }
+
+  /* ── Bento Grid ────────────────────────── */
+  .bento-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin: 24px 0;
+  }
+  .bento-grid .span-2 { grid-column: span 2; }
+
+  @media (max-width: 768px) {
+    .bento-grid { grid-template-columns: 1fr; }
+    .bento-grid .span-2 { grid-column: span 1; }
+    .match-header { flex-direction: column; gap: 12px; }
+    .team-name { text-align: center !important; min-width: auto; font-size: 24px; }
+    .team-picker { flex-direction: column; }
+    .hero-stats-row { gap: 32px; flex-wrap: wrap; }
+    nav { padding: 0 20px; }
+    .nav-links { gap: 4px; }
+    .nav-links a { padding: 6px 8px; font-size: 11px; }
+
+    .hero h1 { font-size: 32px; }
+    .hero-stats-row { gap: 24px; }
+    .goal-dist-svg, .sparkline-svg { height: auto !important; }
+    .hero::before { width: 100vw; }
+    .footer-inner { flex-direction: column; gap: 8px; text-align: center; }
+    .home-away-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 480px) {
+    .container { padding: 0 16px; }
+    nav { height: 56px; padding: 0 12px; }
+    .nav-logo { font-size: 18px; }
+    .nav-links a { padding: 4px 6px; font-size: 10px; }
+
+    .hero { padding: 48px 0 32px; }
+    .hero h1 { font-size: 26px; }
+    .hero-desc { font-size: 13px; }
+    .glass-card { padding: 16px; }
+    .team-name { font-size: 20px; min-width: auto; }
+    .prob-pct { font-size: 16px; }
+    .scoreline-chip { padding: 10px 14px; min-width: 60px; }
+    .scoreline-chip .score { font-size: 18px; }
+    .heatmap-grid { max-width: 100%; gap: 1px; }
+    .hm-cell { min-height: 22px; font-size: 7px; }
+    .method-cards { grid-template-columns: 1fr; }
+    .match-header { gap: 8px; }
+    .team-picker select { min-width: 0; width: 100%; }
+    .form-badges { gap: 3px; }
+    .match-meta { font-size: 11px; }
+  }
+  @media (max-width: 1024px) and (min-width: 769px) {
+    .heatmap-grid { max-width: 400px !important; }
+  }
+
+  /* ── Form Section ──────────────────────── */
+  .form-team-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .form-team-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #f3f4f6;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .form-record {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #9ca3af;
+  }
+  .form-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+  .form-badge {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 11px;
+    color: white;
+  }
+  .badge-W { background: #10b981; }
+  .badge-D { background: #f59e0b; }
+  .badge-L { background: #ef4444; }
+  .form-match {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 13px;
+  }
+  .form-match:last-child { border-bottom: none; }
+  .fm-result {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .fm-result.W { background: #10b981; }
+  .fm-result.D { background: #f59e0b; }
+  .fm-result.L { background: #ef4444; }
+  .fm-venue {
+    font-size: 11px;
+    color: #6b7280;
+    text-transform: uppercase;
+    width: 20px;
+    flex-shrink: 0;
+  }
+  .fm-opponent { flex: 1; color: #d1d5db; }
+  .fm-score {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    color: #e5e7eb;
+    width: 32px;
+    text-align: center;
+  }
+  .fm-xg {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #9ca3af;
+    width: 80px;
+    text-align: right;
+  }
+
+  /* ── Upcoming Fixtures ──────────────────── */
+  .upcoming-section { margin-top: 24px; }
+  .upcoming-fixture {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 13px;
+  }
+  .upcoming-fixture:last-child { border-bottom: none; }
+  .upcoming-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 120px;
+    flex-shrink: 0;
+  }
+  .upcoming-matchday {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: #10b981;
+  }
+  .upcoming-date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #6b7280;
+  }
+  .upcoming-teams {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex: 1;
+  }
+  .upcoming-team {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 180px;
+    justify-content: flex-end;
+  }
+  .upcoming-team:last-child {
+    justify-content: flex-start;
+    flex-direction: row;
+  }
+  .upcoming-team-name {
+    color: #e5e7eb;
+    font-weight: 500;
+    font-size: 12px;
+  }
+  .upcoming-team.is-selected .upcoming-team-name { color: #10b981; font-weight: 700; }
+  .upcoming-vs {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #4b5563;
+    flex-shrink: 0;
+  }
+  .upcoming-venue {
+    font-size: 9px;
+    font-weight: 700;
+    width: 36px;
+    text-align: center;
+    flex-shrink: 0;
+    padding: 3px 0;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+  }
+  .upcoming-venue.home {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+  }
+  .upcoming-venue.away {
+    color: #a78bfa;
+    background: rgba(167, 139, 250, 0.1);
+    border: 1px solid rgba(167, 139, 250, 0.2);
+  }
+  .upcoming-predict {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.15);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+  }
+  .upcoming-predict:hover {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: rgba(16, 185, 129, 0.4);
+  }
+  .upcoming-empty {
+    text-align: center;
+    padding: 32px 20px;
+    color: #6b7280;
+    font-size: 13px;
+  }
+
+  /* ── Heatmap ───────────────────────────── */
+  .heatmap-section { }
+  .heatmap-wrapper { overflow-x: auto; }
+  .heatmap-grid {
+    display: grid;
+    grid-template-columns: 28px repeat(9, 1fr);
+    grid-template-rows: 28px repeat(9, 1fr);
+    gap: 2px;
+    max-width: 480px;
+  }
+  .hm-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.7);
+    min-height: 28px;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+    position: relative;
+    cursor: default;
+  }
+  .hm-cell:not(.hm-label):hover {
+    transform: scale(1.4);
+    z-index: 2;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .hm-cell:not(.hm-label)::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%) scale(0);
+    background: #1f2937;
+    color: #e5e7eb;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    white-space: nowrap;
+    pointer-events: none;
+    transition: transform 0.15s;
+    z-index: 10;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .hm-cell:not(.hm-label):hover::after {
+    transform: translateX(-50%) scale(1);
+  }
+  .hm-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: #6b7280;
+  }
+  .heatmap-axis {
+    font-size: 11px;
+    color: #6b7280;
+    margin-bottom: 8px;
+  }
+
+  /* ── Goal Distribution ─────────────────── */
+  .goal-dist-section { }
+  .goal-dist-svg { width: 100%; height: 220px; }
+  .goal-dist-legend {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #9ca3af;
+  }
+  .goal-dist-legend .dot-home { color: #10b981; }
+  .goal-dist-legend .dot-away { color: #ef4444; }
+
+  /* ── Model Table ───────────────────────── */
+  .model-section { }
+  .model-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .model-table th {
+    text-align: left;
+    padding: 10px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .model-table th:not(:first-child) { text-align: center; }
+  .model-table td {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    padding: 12px 16px;
+    font-size: 14px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .model-table td:first-child {
+    text-align: left;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    color: #d1d5db;
+  }
+  .model-table tr:hover td { background: rgba(16, 185, 129, 0.03); }
+  .model-table .row-ensemble td {
+    color: #10b981;
+    font-weight: 600;
+  }
+  .model-table .row-ensemble td:first-child { color: #10b981; }
+  .ensemble-badge {
+    font-size: 9px;
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+  }
+
+  /* ── Error ─────────────────────────────── */
+  .error-msg {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    padding: 14px 20px;
+    color: #fca5a5;
+    font-size: 14px;
+    display: none;
+    margin-bottom: 24px;
+  }
+
+  /* ── Footer ────────────────────────────── */
+  footer {
+    padding: 48px 0;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    margin-top: 60px;
+  }
+  .footer-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: #6b7280;
+  }
+  .footer-inner a { color: #10b981; text-decoration: none; }
+
+  /* ── Home vs Away Grid ───────────────── */
+  .home-away-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 12px;
+  }
+
+  /* ── About Section ─────────────────────── */
+  .method-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 32px 0;
+  }
+  .method-card {
+    background: rgba(17, 24, 39, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    padding: 24px;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+  .method-card:hover {
+    border-color: rgba(16, 185, 129, 0.2);
+    transform: translateY(-2px);
+  }
+  .method-card h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f3f4f6;
+    margin-bottom: 8px;
+  }
+  .method-card .tier-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    display: inline-block;
+  }
+  .method-card p {
+    font-size: 13px;
+    color: #9ca3af;
+    line-height: 1.6;
+  }
+  .tech-stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin: 32px 0;
+  }
+  .tech-badge {
+    background: rgba(17, 24, 39, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #d1d5db;
+    transition: transform 0.2s, border-color 0.3s, box-shadow 0.3s;
+  }
+  .tech-badge:hover {
+    transform: scale(1.05);
+    border-color: #22c55e;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.15);
+  }
+  .tech-category { margin-bottom: 16px; }
+  .tech-category:last-child { margin-bottom: 0; }
+  .tech-category-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 8px;
+  }
+  .data-sources {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    margin: 24px 0;
+    font-size: 13px;
+    color: #9ca3af;
+  }
+  .data-sources span { font-weight: 600; color: #d1d5db; }
+
+  /* ── Pipeline Flow ────────────────────── */
+  .pipeline-flow {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 8px;
+    margin: 24px 0 8px;
+    flex-wrap: wrap;
+  }
+  .pipeline-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(16, 185, 129, 0.06);
+    border: 1px solid rgba(16, 185, 129, 0.15);
+    border-radius: 12px;
+    padding: 16px 20px;
+    min-width: 140px;
+    flex: 1;
+    text-align: center;
+    transition: border-color 0.3s, transform 0.3s;
+  }
+  .pipeline-step:hover {
+    border-color: rgba(16, 185, 129, 0.35);
+    transform: translateY(-2px);
+  }
+  .pipeline-step .step-icon { font-size: 24px; margin-bottom: 8px; }
+  .pipeline-step .step-title { font-size: 13px; font-weight: 700; color: #f3f4f6; margin-bottom: 4px; }
+  .pipeline-step .step-desc { font-size: 11px; color: #9ca3af; line-height: 1.5; }
+  .pipeline-arrow { font-size: 20px; color: #10b981; opacity: 0.5; display: flex; align-items: center; }
+
+  /* ── Developer Card ───────────────────── */
+  .developer-card {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+  }
+  .developer-info { flex: 1; }
+  .developer-info h3 { font-size: 22px; font-weight: 800; color: #f9fafb; margin-bottom: 4px; }
+  .developer-info .developer-title { font-size: 13px; font-weight: 600; color: #10b981; margin-bottom: 12px; }
+  .developer-info .developer-bio { font-size: 13px; color: #9ca3af; line-height: 1.7; max-width: 520px; }
+  .developer-links { display: flex; gap: 12px; flex-shrink: 0; }
+  .social-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.2s, border-color 0.3s, background 0.3s;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #d1d5db;
+    background: rgba(17, 24, 39, 0.6);
+  }
+  .social-btn:hover {
+    transform: translateY(-2px);
+    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.08);
+  }
+  .social-btn svg { flex-shrink: 0; }
+
+  @media (max-width: 768px) {
+    .pipeline-flow { flex-direction: column; align-items: stretch; }
+    .pipeline-arrow { justify-content: center; transform: rotate(90deg); }
+    .developer-card { flex-direction: column; text-align: center; }
+    .developer-info .developer-bio { max-width: 100%; }
+    .developer-links { justify-content: center; }
+  }
+
+  /* ── Teams Section ─────────────────────── */
+  .teams-hero {
+    text-align: center;
+    padding: 56px 0 32px;
+  }
+  .teams-hero h2 {
+    font-size: 36px;
+    font-weight: 800;
+    color: #f9fafb;
+    letter-spacing: -1px;
+    margin-bottom: 12px;
+  }
+  .teams-hero p {
+    font-size: 15px;
+    color: #9ca3af;
+  }
+  .team-select-wrapper {
+    max-width: 400px;
+    margin: 0 auto 32px;
+  }
+  .team-select-wrapper select {
+    width: 100%;
+    padding: 12px 16px;
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    color: #e5e7eb;
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 40px;
+  }
+  .team-profile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 768px) {
+    .team-profile-grid { grid-template-columns: 1fr; }
+  }
+  .sparkline-svg { width: 100%; height: 60px; }
+
+  /* ── Cinematic Loading Intro ─────────────────────── */
+  #loading-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: #080b12;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .animation-container {
+    width: 200px; height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    position: relative;
+    z-index: 10;
+  }
+  #realistic-ball {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 50%;
+    position: relative;
+    z-index: 10;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  }
+
+  .loader-branding {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    animation: breath 2s ease-in-out infinite;
+    position: relative;
+    z-index: 1;
+  }
+  .loading-logo {
+    height: 32px;
+    object-fit: contain;
+  }
+  .loading-logo-text {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    color: #c8cdd8;
+    display: none;
+  }
+  .loading-logo-text .dot {
+    color: #22c55e;
+  }
+  @keyframes breath {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; filter: drop-shadow(0 0 8px rgba(34,197,94,0.4)); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Skip Navigation -->
+<a href="#predict" class="skip-nav">Skip to predictions</a>
+
+<!-- Loading Screen -->
+<div id="loading-overlay" role="status" aria-live="polite" aria-label="Loading StatStriker">
+  <div class="animation-container">
+    <img src="realistic-ball.png" alt="" id="realistic-ball" />
+  </div>
+  <div class="loader-branding">
+    <img src="logo.png" alt="StatStriker Logo" class="loading-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+    <div class="loading-logo-text">stat<span class="dot">.</span>striker</div>
+  </div>
+</div>
+
+<main id="main-content">
+<!-- Nav -->
+<nav>
+  <div class="nav-left">
+    <div class="nav-logo" onclick="switchTab('matches')" role="button" tabindex="0" aria-label="StatStriker home">stat<span class="dot">.</span>striker</div>
+    <div class="nav-links" role="navigation" aria-label="Main navigation">
+      <a href="#matches" class="active" data-tab="matches" onclick="switchTab('matches'); return false;">Matches</a>
+      <a href="#teams" data-tab="teams" onclick="switchTab('teams'); return false;">Teams</a>
+      <a href="#about" data-tab="about" onclick="switchTab('about'); return false;">About</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- ════════ MATCHES SECTION ════════ -->
+  <div class="section-page active" id="section-matches">
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-subtitle">Premier League Prediction Engine</div>
+      <h1><span class="gradient-text">Predict</span> Matches<br>With 5-Tier AI Models</h1>
+      <div class="hero-desc">Dixon-Coles, Bivariate Poisson, xG models, Feature GLM and Stacked Ensemble working together.</div>
+      <div class="hero-stats-row">
+        <div class="hero-stat">
+          <div class="stat-number" id="statMatches" data-target="0">--</div>
+          <div class="stat-label">Matches Trained</div>
+        </div>
+        <div class="hero-stat">
+          <div class="stat-number" data-target="5">5</div>
+          <div class="stat-label">Model Tiers</div>
+        </div>
+        <div class="hero-stat">
+          <div class="stat-number" id="statLogLoss" data-target="0">--</div>
+          <div class="stat-label">Log Loss</div>
+        </div>
+        <div class="hero-stat">
+          <div class="stat-number" data-target="25">25</div>
+          <div class="stat-label">Teams</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Predict -->
+    <div class="predict-section" id="predict">
+      <div class="section-title">Match Prediction</div>
+      <div class="team-picker">
+        <label for="homeTeam" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Home team</label>
+        <select id="homeTeam" aria-label="Select home team"><option value="">Select home team</option></select>
+        <span class="vs-text" aria-hidden="true">vs</span>
+        <label for="awayTeam" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Away team</label>
+        <select id="awayTeam" aria-label="Select away team"><option value="">Select away team</option></select>
+        <button class="predict-btn" id="predictBtn" onclick="predict()">Predict &rarr;</button>
+      </div>
+    </div>
+
+    <div class="error-msg" id="errorMsg" role="alert" aria-live="assertive"></div>
+
+    <!-- Empty State (shown before first prediction) -->
+    <div class="empty-state" id="emptyState">
+      <img src="realistic-ball.png" alt="" class="empty-state-ball">
+      <div class="empty-state-text">Select two teams above and click <strong>Predict</strong> to generate match probabilities, scoreline heatmaps, and model comparisons.</div>
+    </div>
+
+    <!-- Match Result -->
+    <div class="match-result" id="matchResult">
+
+      <!-- Match Header + Probability Bar -->
+      <div class="match-header">
+        <div class="team-name home" id="homeName"></div>
+        <div class="match-vs" aria-hidden="true">vs</div>
+        <div class="team-name away" id="awayName"></div>
+      </div>
+
+      <div class="glass-card span-2 no-anim" id="probCard" role="img" aria-label="Match probability breakdown">
+        <div class="prob-container">
+          <div class="prob-labels">
+            <span class="prob-pct home" id="pctHome"></span>
+            <span class="prob-pct draw" id="pctDraw"></span>
+            <span class="prob-pct away" id="pctAway"></span>
+          </div>
+          <div class="prob-bar-single">
+            <div class="seg-home" id="segHome"></div>
+            <div class="seg-draw" id="segDraw"></div>
+            <div class="seg-away" id="segAway"></div>
+          </div>
+          <div class="match-meta">
+            <span>Expected Goals: <span class="highlight" id="xgDisplay"></span></span>
+            <span id="confidenceArea"></span>
+            <span>Most Likely: <span class="highlight" id="scoreDisplay"></span></span>
+          </div>
+        </div>
+
+        <!-- Model Agreement Strip -->
+        <div class="agreement-section">
+          <div class="section-title" style="margin-bottom:8px">Model Agreement — Home Win</div>
+          <div class="agreement-strip" id="agreementStrip"></div>
+          <div class="agreement-labels"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+          <div class="agreement-verdict" id="agreementVerdict"></div>
+        </div>
+        <div style="text-align:center;margin-top:16px">
+          <button class="share-btn" id="shareBtn" onclick="sharePrediction()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            Share Prediction
+          </button>
+        </div>
+      </div>
+
+      <!-- Top Scorelines -->
+      <div class="glass-card span-2" id="scorelinesCard">
+        <div class="scorelines-section">
+          <div class="section-title">Most Likely Scorelines</div>
+          <div class="scoreline-chips" id="scorelineChips"></div>
+        </div>
+      </div>
+
+      <!-- Bento Grid: Heatmap + Goal Dist | Models -->
+      <div class="bento-grid" id="bentoResults">
+        <div class="glass-card" id="heatmapCard">
+          <div class="heatmap-section">
+            <div class="section-title">Scoreline Matrix</div>
+            <div class="heatmap-wrapper">
+              <div class="heatmap-axis">Home goals &darr; &nbsp; Away goals &rarr;</div>
+              <div class="heatmap-grid" id="heatmap" role="grid" aria-label="Scoreline probability heatmap"></div>
+            </div>
+          </div>
+        </div>
+        <div class="glass-card" id="goalDistCard">
+          <div class="goal-dist-section">
+            <div class="section-title">Goal Distribution</div>
+            <div style="font-size:12px;color:#6b7280;margin-bottom:8px">Probability of each team scoring exactly N goals. Hover for values.</div>
+            <div class="chart-container" id="goalDistContainer">
+              <svg class="goal-dist-svg" id="goalDistSvg" viewBox="0 0 400 220" style="height:220px"></svg>
+              <div class="chart-crosshair" id="goalDistCrosshair" style="height:220px"></div>
+              <div class="chart-tooltip" id="goalDistTooltip"></div>
+            </div>
+            <div class="goal-dist-legend">
+              <span><span class="dot-home">&#9679;</span> Home</span>
+              <span><span class="dot-away">&#9679;</span> Away</span>
+            </div>
+          </div>
+        </div>
+        <div class="glass-card" id="modelCard">
+          <div class="model-section">
+            <div class="section-title">Model Comparison</div>
+            <table class="model-table" aria-label="Prediction by model tier">
+              <thead><tr><th>Model</th><th>Home</th><th>Draw</th><th>Away</th></tr></thead>
+              <tbody id="modelTable"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="glass-card" id="formCardContainer">
+          <div class="section-title">Recent Form</div>
+          <div class="team-profile-grid" id="formSection">
+            <div id="homeForm"></div>
+            <div id="awayForm"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════ TEAMS SECTION ════════ -->
+  <div class="section-page" id="section-teams">
+    <div class="teams-hero">
+      <h2>Team Analysis</h2>
+      <p>Explore individual team performance across seasons — results, goals, xG, and form trends.</p>
+    </div>
+
+    <div style="display:flex; gap:12px; max-width:600px; margin:0 auto 32px; flex-wrap:wrap; justify-content:center;">
+      <div style="flex:1; min-width:200px;">
+        <label for="teamSelect" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Select a team</label>
+        <select id="teamSelect" aria-label="Select a team to analyze" onchange="loadTeamSeason()" style="width:100%;padding:12px 16px;background:#111827;border:1px solid #1f2937;border-radius:8px;color:#e5e7eb;font-size:15px;font-family:'Inter',sans-serif;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 14px center;padding-right:40px;">
+          <option value="">Select a team...</option>
+        </select>
+      </div>
+      <div style="flex:1; min-width:160px;">
+        <label for="seasonSelect" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Select a season</label>
+        <select id="seasonSelect" aria-label="Select a season" onchange="loadTeamSeason()" style="width:100%;padding:12px 16px;background:#111827;border:1px solid #1f2937;border-radius:8px;color:#e5e7eb;font-size:15px;font-family:'Inter',sans-serif;cursor:pointer;appearance:none;-webkit-appearance:none;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 14px center;padding-right:40px;">
+          <option value="">Select a season...</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="teamProfileArea"></div>
+  </div>
+
+  <!-- ════════ ABOUT SECTION ════════ -->
+  <div class="section-page" id="section-about">
+
+    <!-- Pipeline Overview -->
+    <div class="glass-card no-anim" style="margin: 48px 0 20px;">
+      <div class="section-title" style="text-align:center;font-size:16px;letter-spacing:0.5px;margin-bottom:4px">Full-Stack Data Engineering & ML Pipeline</div>
+      <p style="text-align:center;font-size:13px;color:#6b7280;margin-bottom:20px">End-to-end pipeline from raw web data to real-time match predictions</p>
+      <div class="pipeline-flow">
+        <div class="pipeline-step">
+          <div class="step-icon">&#128375;</div>
+          <div class="step-title">Web Scraping</div>
+          <div class="step-desc">1,000+ matches across 3 seasons collected from FBRef & Understat via ScraperAPI + GitHub Actions</div>
+        </div>
+        <div class="pipeline-arrow">&#10132;</div>
+        <div class="pipeline-step">
+          <div class="step-icon">&#9881;</div>
+          <div class="step-title">Data Processing</div>
+          <div class="step-desc">10,000+ match events processed through entity resolution, normalization & 50+ engineered features</div>
+        </div>
+        <div class="pipeline-arrow">&#10132;</div>
+        <div class="pipeline-step">
+          <div class="step-icon">&#129504;</div>
+          <div class="step-title">Statistical Modeling</div>
+          <div class="step-desc">5-tier ensemble approach that outperforms any individual model across temporal cross-validation</div>
+        </div>
+        <div class="pipeline-arrow">&#10132;</div>
+        <div class="pipeline-step">
+          <div class="step-icon">&#127760;</div>
+          <div class="step-title">Web Interface</div>
+          <div class="step-desc">Sub-second inference via FastAPI with interactive visualizations and real-time analytics</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bento Grid: Models + Tech + Sources -->
+    <div class="bento-grid">
+
+      <!-- Left: Model Tiers -->
+      <div class="glass-card no-anim">
+        <div class="section-title">Prediction Models</div>
+        <div class="method-cards" style="margin-top:12px">
+          <div class="method-card">
+            <div class="tier-badge">TIER 1</div>
+            <h3>Dixon-Coles</h3>
+            <p>Classic Poisson model enhanced with attack/defense ratings per team and a rho correction for low-scoring draws. Time-weighted to emphasize recent form.</p>
+          </div>
+          <div class="method-card">
+            <div class="tier-badge">TIER 2</div>
+            <h3>Bivariate Poisson</h3>
+            <p>Models correlated goal counts between teams using a shared covariance parameter, capturing the tendency for matches to be jointly high or low scoring.</p>
+          </div>
+          <div class="method-card">
+            <div class="tier-badge">TIER 3</div>
+            <h3>xG-Dixon-Coles</h3>
+            <p>Replaces actual goals with expected goals (xG) from Understat, removing noise from lucky/unlucky finishes and measuring true chance creation.</p>
+          </div>
+          <div class="method-card">
+            <div class="tier-badge">TIER 4</div>
+            <h3>Feature Poisson GLM</h3>
+            <p>Generalized linear model incorporating rolling features: shots, possession, pressing metrics, and form trends as additional predictors beyond historical goals.</p>
+          </div>
+          <div class="method-card">
+            <div class="tier-badge">TIER 5 &#8212; ENSEMBLE</div>
+            <h3>Stacked Ensemble</h3>
+            <p>Weighted combination of all four models, optimized to minimize log-loss on temporal cross-validation folds. The final prediction used for all outputs.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column: Tech + Metrics + Sources stacked -->
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div class="glass-card no-anim">
+          <div class="section-title">Tech Stack</div>
+          <div style="margin:12px 0 0">
+            <div class="tech-category">
+              <div class="tech-category-label">Core Engine</div>
+              <div class="tech-stack" style="justify-content:flex-start;margin:0">
+                <div class="tech-badge">Python 3.12</div>
+                <div class="tech-badge">FastAPI</div>
+              </div>
+            </div>
+            <div class="tech-category">
+              <div class="tech-category-label">Data Science</div>
+              <div class="tech-stack" style="justify-content:flex-start;margin:0">
+                <div class="tech-badge">Pandas / NumPy</div>
+                <div class="tech-badge">SciPy</div>
+                <div class="tech-badge">scikit-learn</div>
+              </div>
+            </div>
+            <div class="tech-category">
+              <div class="tech-category-label">Frontend</div>
+              <div class="tech-stack" style="justify-content:flex-start;margin:0">
+                <div class="tech-badge">GSAP</div>
+                <div class="tech-badge">HTML / CSS / JS</div>
+              </div>
+            </div>
+            <div class="tech-category">
+              <div class="tech-category-label">DevOps</div>
+              <div class="tech-stack" style="justify-content:flex-start;margin:0">
+                <div class="tech-badge">GitHub Actions</div>
+                <div class="tech-badge">ScraperAPI</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="glass-card no-anim">
+          <div class="section-title">Performance Metrics</div>
+          <p style="font-size:12px;color:#6b7280;margin:4px 0 16px">Backtested on 5 years of historical Premier League data</p>
+          <div style="display:flex;gap:32px">
+            <div>
+              <div class="stat-number" style="font-size:28px;color:#10b981">1.023</div>
+              <div class="stat-label">Log-Loss</div>
+            </div>
+            <div>
+              <div class="stat-number" style="font-size:28px;color:#10b981">0.214</div>
+              <div class="stat-label">Brier Score</div>
+            </div>
+          </div>
+        </div>
+        <div class="glass-card no-anim">
+          <div class="section-title">Data Sources</div>
+          <p style="font-size:12px;color:#6b7280;margin:4px 0 16px">Pipeline processing 10,000+ match events from 2 authoritative sources</p>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div>
+              <span style="font-weight:600;color:#d1d5db;font-size:14px">FBRef</span>
+              <p style="font-size:12px;color:#9ca3af;margin:2px 0 0">Goals, shots, possession, defensive actions across 1,000+ matches</p>
+            </div>
+            <div>
+              <span style="font-weight:600;color:#d1d5db;font-size:14px">Understat</span>
+              <p style="font-size:12px;color:#9ca3af;margin:2px 0 0">Shot-level xG data for high-precision expected goals modeling</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Developer Profile -->
+    <div class="glass-card no-anim" style="margin-top:20px">
+      <div class="section-title">Developer</div>
+      <div class="developer-card" style="margin-top:16px">
+        <div class="developer-info">
+          <h3>Nguy&#7877;n &#272;&#7913;c B&#7843;o H&#432;ng</h3>
+          <div class="developer-title">Data Engineering & ML</div>
+          <p class="developer-bio">Focused on building scalable ETL pipelines and predictive ML systems. StatStriker demonstrates end-to-end ownership: automated web scraping, entity resolution, multi-source data fusion, 5-tier Poisson ensemble modeling, and a real-time prediction API — all deployed via CI/CD.</p>
+        </div>
+        <div class="developer-links">
+          <a href="https://www.linkedin.com/in/bihun315" target="_blank" rel="noopener" class="social-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+            LinkedIn
+          </a>
+          <a href="https://github.com/BhunZ" target="_blank" rel="noopener" class="social-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+            GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <span>StatStriker &mdash; Dixon-Coles, Bivariate Poisson, xG-DC, Feature Poisson, Ensemble</span>
+      <span id="footerFreshness" style="font-size:11px;color:#4b5563"></span>
+      <a href="https://github.com/BhunZ/StatStriker" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+<script>
+gsap.registerPlugin(ScrollTrigger);
+/* ═══════════════════════════════════════════════
+   LOADING ANIMATION
+   ═══════════════════════════════════════════════ */
+let isLoaded = false;
+let entranceDone = false;
+let isExiting = false;
+
+window.addEventListener('load', () => {
+  isLoaded = true;
+  if (entranceDone && !isExiting) triggerExitAnimation();
+});
+
+gsap.set("#realistic-ball", { x: -350, y: -300, rotation: -180, scale: 1, opacity: 1 });
+
+const entranceTL = gsap.timeline({
+  onComplete: () => {
+    entranceDone = true;
+    if (isLoaded) triggerExitAnimation();
+    else loopAnimation();
+  }
+});
+
+entranceTL.to("#realistic-ball", { y: 0, duration: 2, ease: "bounce.out" }, 0);
+entranceTL.to("#realistic-ball", { x: 0, duration: 2, ease: "power2.out" }, 0);
+entranceTL.to("#realistic-ball", { rotation: 720, duration: 2, ease: "power2.out" }, 0);
+
+function loopAnimation() {
+  if (isLoaded || isExiting) return;
+  gsap.to("#realistic-ball", { y: -50, duration: 0.7, yoyo: true, repeat: -1, ease: "power2.inOut" });
+  gsap.to("#realistic-ball", { rotation: "+=360", duration: 2, repeat: -1, ease: "linear" });
+}
+
+function triggerExitAnimation() {
+  if (isExiting) return;
+  isExiting = true;
+  gsap.killTweensOf("#realistic-ball");
+
+  gsap.to("#realistic-ball", {
+    rotation: "+=1440", scale: 150, opacity: 0.35,
+    duration: 1.5, ease: "expo.in",
+    onComplete: () => {
+      gsap.to("#loading-overlay", {
+        opacity: 0, duration: 0.5, ease: "power2.inOut",
+        onComplete: () => {
+          document.getElementById('loading-overlay').style.display = 'none';
+          animateHeroCounters();
+          // Auto-predict for portfolio viewers
+          setTimeout(() => predict(), 600);
+        }
+      });
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   HERO COUNTER ANIMATION
+   ═══════════════════════════════════════════════ */
+function animateHeroCounters() {
+  document.querySelectorAll('.stat-number').forEach(el => {
+    const text = el.textContent.replace(/,/g, '');
+    const target = parseFloat(text);
+    if (isNaN(target) || target === 0) return;
+
+    const isDecimal = text.includes('.');
+    const obj = { val: 0 };
+
+    gsap.to(obj, {
+      val: target,
+      duration: 1.8,
+      ease: "power2.out",
+      onUpdate: () => {
+        el.textContent = isDecimal
+          ? obj.val.toFixed(3)
+          : Math.round(obj.val).toLocaleString();
+      }
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   SPA TAB SWITCHING
+   ═══════════════════════════════════════════════ */
+let _aboutAnimated = false;
+
+function switchTab(tab) {
+  document.querySelectorAll('.section-page').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-links a').forEach(a => a.classList.remove('active'));
+
+  const section = document.getElementById('section-' + tab);
+  if (section) section.classList.add('active');
+
+  const link = document.querySelector(`.nav-links a[data-tab="${tab}"]`);
+  if (link) link.classList.add('active');
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (tab === 'about' && !_aboutAnimated) {
+    _aboutAnimated = true;
+    requestAnimationFrame(() => {
+      const cards = document.querySelectorAll('#section-about .glass-card');
+      cards.forEach(card => {
+        gsap.from(card, {
+          y: 50,
+          opacity: 0,
+          duration: 0.8,
+          ease: 'power2.out',
+          scrollTrigger: {
+            trigger: card,
+            start: 'top 85%',
+            once: true,
+          }
+        });
+      });
+      ScrollTrigger.refresh();
+    });
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   SEARCH BAR FILTERING
+   ═══════════════════════════════════════════════ */
+
+
+/* ═══════════════════════════════════════════════
+   SCROLL-TRIGGERED REVEALS
+   ═══════════════════════════════════════════════ */
+const revealObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      revealObserver.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.1 });
+
+function observeCards() {
+  document.querySelectorAll('.glass-card:not(.no-anim)').forEach(card => {
+    revealObserver.observe(card);
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   TEAM LOGOS
+   Maps canonical team names to football-data.org crest IDs.
+   ═══════════════════════════════════════════════ */
+const TEAM_CRESTS = {
+  'Arsenal': 57, 'Aston Villa': 58, 'Bournemouth': 1044, 'Brentford': 402,
+  'Brighton': 397, 'Burnley': 328, 'Chelsea': 61, 'Crystal Palace': 354,
+  'Everton': 62, 'Fulham': 63, 'Ipswich Town': 349, 'Leeds United': 341,
+  'Leicester City': 338, 'Liverpool': 64, 'Luton Town': 389,
+  'Manchester City': 65, 'Manchester United': 66, 'Newcastle United': 67,
+  'Nottingham Forest': 351, 'Sheffield United': 356, 'Southampton': 340,
+  'Sunderland': 71, 'Tottenham': 73, 'West Ham': 563, 'Wolverhampton': 76,
+};
+
+/** Returns an <img> tag for the team crest, or empty string if not found */
+function teamLogo(name, size = 32) {
+  const id = TEAM_CRESTS[name];
+  if (!id) return '';
+  return `<img src="https://crests.football-data.org/${id}.png" alt="" class="team-logo" width="${size}" height="${size}" loading="lazy" onerror="this.style.display='none'">`;
+}
+
+/* ═══════════════════════════════════════════════
+   API & PREDICTION
+   ═══════════════════════════════════════════════ */
+const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://127.0.0.1:8000'
+  : window.location.origin;
+const MODEL_NAMES = {
+  ensemble: 'Ensemble (Stacked)',
+  dixon_coles: 'Dixon-Coles',
+  bivariate_poisson: 'Bivariate Poisson',
+  xg_dixon_coles: 'xG-Dixon-Coles',
+  feature_poisson: 'Feature Poisson GLM',
+};
+const MODEL_ORDER = ['ensemble','dixon_coles','bivariate_poisson','xg_dixon_coles','feature_poisson'];
+const MODEL_COLORS = {
+  ensemble: '#10b981',
+  dixon_coles: '#06b6d4',
+  bivariate_poisson: '#8b5cf6',
+  xg_dixon_coles: '#f59e0b',
+  feature_poisson: '#ec4899',
+};
+
+const FALLBACK_TEAMS = ["Arsenal","Aston Villa","Bournemouth","Brentford","Brighton","Burnley","Chelsea","Crystal Palace","Everton","Fulham","Ipswich Town","Leeds United","Leicester City","Liverpool","Luton Town","Manchester City","Manchester United","Newcastle United","Nottingham Forest","Sheffield United","Southampton","Sunderland","Tottenham","West Ham","Wolverhampton"];
+
+/* ── Named constants (avoid magic numbers) ── */
+const FETCH_DEFAULT_MS = 10000;
+const FETCH_PREDICT_MS = 60000;
+const HEATMAP_ANIM_DELAY = 0.02;
+const FORM_ROW_ANIM_DELAY = 0.1;
+const PROB_BAR_TRANSITION_MS = 300;
+
+function fetchWithTimeout(url, ms = FETCH_DEFAULT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+function populateTeamSelect(teams) {
+  ['homeTeam', 'awayTeam', 'teamSelect'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    // Keep placeholder, clear rest
+    while (sel.options.length > 1) sel.remove(1);
+    teams.forEach(t => sel.add(new Option(t, t)));
+  });
+}
+
+async function init() {
+  try {
+    const [teamsRes, statusRes] = await Promise.all([
+      fetchWithTimeout(API + '/teams'), fetchWithTimeout(API + '/status')
+    ]);
+    const teams = await teamsRes.json();
+    const status = await statusRes.json();
+
+    populateTeamSelect(teams.teams);
+
+    // Check URL params for shared prediction links
+    const params = new URLSearchParams(window.location.search);
+    const urlHome = params.get('home');
+    const urlAway = params.get('away');
+
+    document.getElementById('homeTeam').value = (urlHome && teams.teams.includes(urlHome)) ? urlHome : 'Arsenal';
+    document.getElementById('awayTeam').value = (urlAway && teams.teams.includes(urlAway)) ? urlAway : 'Chelsea';
+
+    document.getElementById('statMatches').textContent = status.data.total_matches.toLocaleString();
+    const ll = status.pipeline.last_train_log_loss;
+    document.getElementById('statLogLoss').textContent = ll ? ll.toFixed(3) : '1.023';
+
+    // Surface data freshness in footer
+    try {
+      const p = status.pipeline;
+      const fmt = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
+      const parts = [];
+      if (p.last_scrape_date) parts.push('Data: ' + fmt(p.last_scrape_date));
+      if (p.last_train_date) parts.push('Model: ' + fmt(p.last_train_date));
+      if (p.model_version) parts.push('v' + p.model_version);
+      if (parts.length) document.getElementById('footerFreshness').textContent = parts.join(' · ');
+    } catch(_) {}
+  } catch(e) {
+    populateTeamSelect(FALLBACK_TEAMS);
+    document.getElementById('homeTeam').value = 'Arsenal';
+    document.getElementById('awayTeam').value = 'Chelsea';
+    document.getElementById('statMatches').textContent = '1,069';
+    document.getElementById('statLogLoss').textContent = '1.023';
+    showError(e.name === 'AbortError'
+      ? 'Connection timed out. The API server may be starting up — try again in a moment.'
+      : 'Cannot connect to API. Make sure the server is running.');
+  }
+}
+
+async function predict() {
+  const home = document.getElementById('homeTeam').value;
+  const away = document.getElementById('awayTeam').value;
+  if (!home || !away) return showError('Select both teams.');
+  if (home === away) return showError('Teams must be different.');
+
+  const btn = document.getElementById('predictBtn');
+  btn.disabled = true; btn.textContent = 'Predicting...';
+  hideError();
+
+  // Show skeleton overlay while fetching
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('matchResult').classList.add('show');
+  const skelHtml = `<div id="predSkeleton" style="position:absolute;inset:0;z-index:10;background:rgba(8,11,18,0.85);padding:24px;border-radius:16px">
+    <div style="display:flex;justify-content:center;align-items:center;gap:24px;margin-bottom:24px">
+      <div class="skeleton" style="width:140px;height:32px"></div>
+      <div style="color:#374151;font-size:18px">vs</div>
+      <div class="skeleton" style="width:140px;height:32px"></div>
+    </div>
+    <div class="skeleton" style="height:6px;border-radius:6px;margin-bottom:20px"></div>
+    <div style="display:flex;gap:16px;justify-content:center">
+      <div class="skeleton" style="width:80px;height:20px"></div>
+      <div class="skeleton" style="width:80px;height:20px"></div>
+      <div class="skeleton" style="width:80px;height:20px"></div>
+    </div>
+  </div>`;
+  const matchResult = document.getElementById('matchResult');
+  matchResult.style.position = 'relative';
+  matchResult.insertAdjacentHTML('afterbegin', skelHtml);
+
+  try {
+    const [predRes, scoreRes, hfRes, afRes] = await Promise.all([
+      fetchWithTimeout(`${API}/predict/${encodeTeam(home)}/${encodeTeam(away)}`, FETCH_PREDICT_MS),
+      fetchWithTimeout(`${API}/scoreline/${encodeTeam(home)}/${encodeTeam(away)}`, FETCH_PREDICT_MS),
+      fetchWithTimeout(`${API}/teams/${encodeTeam(home)}/form?last_n=5`),
+      fetchWithTimeout(`${API}/teams/${encodeTeam(away)}/form?last_n=5`),
+    ]);
+    const pred = await predRes.json();
+    const score = await scoreRes.json();
+    const hf = await hfRes.json();
+    const af = await afRes.json();
+
+    // Remove skeleton overlay, show results
+    const skel = document.getElementById('predSkeleton');
+    if (skel) skel.remove();
+
+    // Staggered reveal with GSAP timeline
+    const tl = gsap.timeline();
+
+    // Team names entrance
+    renderMatch(pred);
+    tl.fromTo('#homeName', { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 }, 0);
+    tl.fromTo('#awayName', { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 }, 0.1);
+
+    // Probability bar
+    tl.fromTo('#probCard', { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.5 }, 0.2);
+
+    // Scorelines
+    renderScorelines(score.top_scorelines);
+    tl.fromTo('#scorelinesCard', { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.5 }, 0.4);
+
+    // Heatmap + Goal Dist + Models + Form
+    renderHeatmap(score.matrix);
+    renderGoalDist(score.matrix);
+    renderModels(pred.tiers);
+    renderAgreement(pred.tiers);
+    renderConfidence(pred.tiers);
+    renderForm('home', hf);
+    renderForm('away', af);
+
+    // Observe bento cards for scroll reveal
+    observeCards();
+
+    // Force-reveal cards that are already in viewport
+    setTimeout(() => {
+      document.querySelectorAll('#bentoResults .glass-card').forEach(card => {
+        const rect = card.getBoundingClientRect();
+        if (rect.top < window.innerHeight) {
+          card.classList.add('visible');
+        }
+      });
+    }, 500);
+
+  } catch(e) {
+    showError(e.name === 'AbortError'
+      ? 'Request timed out. Please check your connection and try again.'
+      : 'Prediction failed: ' + e.message);
+  } finally {
+    const skel = document.getElementById('predSkeleton');
+    if (skel) skel.remove();
+    btn.disabled = false;
+    btn.innerHTML = 'Predict &rarr;';
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   RENDER FUNCTIONS
+   ═══════════════════════════════════════════════ */
+function renderMatch(pred) {
+  document.getElementById('homeName').innerHTML = `<span>${pred.home_team}</span>${teamLogo(pred.home_team, 40)}`;
+  document.getElementById('awayName').innerHTML = `${teamLogo(pred.away_team, 40)}<span>${pred.away_team}</span>`;
+
+  const p = pred.tiers.ensemble || Object.values(pred.tiers)[0];
+  const h = p.home * 100, d = p.draw * 100, a = p.away * 100;
+
+  document.getElementById('pctHome').textContent = h.toFixed(0) + '%';
+  document.getElementById('pctDraw').textContent = d.toFixed(0) + '%';
+  document.getElementById('pctAway').textContent = a.toFixed(0) + '%';
+
+  // Update ARIA label
+  document.getElementById('probCard').setAttribute('aria-label',
+    `${pred.home_team} ${h.toFixed(0)}% win, ${d.toFixed(0)}% draw, ${pred.away_team} ${a.toFixed(0)}% win`);
+
+  // Animate from 33% equal split to actual values after CSS transition kicks in
+  setTimeout(() => {
+    document.getElementById('segHome').style.width = h + '%';
+    document.getElementById('segDraw').style.width = d + '%';
+    document.getElementById('segAway').style.width = a + '%';
+  }, PROB_BAR_TRANSITION_MS);
+
+  document.getElementById('xgDisplay').textContent =
+    pred.expected_goals.home + ' - ' + pred.expected_goals.away;
+  document.getElementById('scoreDisplay').textContent = pred.most_likely_scoreline;
+}
+
+function renderConfidence(tiers) {
+  const values = MODEL_ORDER.filter(k => tiers[k]).map(k => tiers[k].home);
+  const max = Math.max(...values);
+  const area = document.getElementById('confidenceArea');
+
+  let label, cls;
+  if (max > 0.50) { label = 'High Confidence'; cls = 'confidence-high'; }
+  else if (max > 0.40) { label = 'Moderate'; cls = 'confidence-moderate'; }
+  else { label = 'Competitive Match'; cls = 'confidence-low'; }
+
+  area.innerHTML = `<span class="confidence-label ${cls}">${label}</span>`;
+}
+
+function renderAgreement(tiers) {
+  const strip = document.getElementById('agreementStrip');
+  strip.innerHTML = '';
+  const values = [];
+
+  MODEL_ORDER.filter(k => tiers[k]).forEach(name => {
+    const pct = tiers[name].home * 100;
+    values.push(pct);
+    const dot = document.createElement('div');
+    dot.className = 'agreement-dot';
+    dot.setAttribute('data-model', name);
+    dot.style.left = pct + '%';
+    dot.title = `${MODEL_NAMES[name]}: ${pct.toFixed(1)}%`;
+    strip.appendChild(dot);
+  });
+
+  const spread = Math.max(...values) - Math.min(...values);
+  const verdict = document.getElementById('agreementVerdict');
+  if (spread <= 5) {
+    verdict.textContent = 'High Agreement';
+    verdict.style.color = '#10b981';
+  } else if (spread <= 10) {
+    verdict.textContent = 'Moderate Agreement';
+    verdict.style.color = '#f59e0b';
+  } else {
+    verdict.textContent = 'Models Disagree';
+    verdict.style.color = '#ef4444';
+  }
+}
+
+function renderScorelines(list) {
+  const el = document.getElementById('scorelineChips');
+  el.innerHTML = '';
+  list.forEach((s, idx) => {
+    const d = document.createElement('div');
+    d.className = 'scoreline-chip';
+    d.style.opacity = '0';
+    d.style.animation = `popIn 0.4s ease-out forwards`;
+    d.style.animationDelay = `${idx * 0.08}s`;
+    d.innerHTML = `<div class="score">${s.score}</div><div class="pct">${(s.probability*100).toFixed(1)}%</div>`;
+    el.appendChild(d);
+  });
+}
+
+function renderHeatmap(matrix) {
+  const el = document.getElementById('heatmap');
+  el.innerHTML = '';
+  if (!matrix || !matrix.length || !matrix.flat().some(v => v > 0)) {
+    el.innerHTML = '<div style="text-align:center;padding:32px;color:#6b7280;font-size:13px;grid-column:span 10">Heatmap data unavailable</div>';
+    return;
+  }
+  const max = Math.max(...matrix.flat());
+
+  // Corner
+  el.appendChild(createDiv('hm-cell hm-label', ''));
+  for (let j = 0; j < 9; j++) el.appendChild(createDiv('hm-cell hm-label', j));
+  for (let i = 0; i < 9; i++) {
+    el.appendChild(createDiv('hm-cell hm-label', i));
+    for (let j = 0; j < 9; j++) {
+      const v = matrix[i]?.[j] || 0;
+      const t = v / max;
+      const cell = createDiv('hm-cell', (v*100).toFixed(1));
+
+      // Viridis-inspired 4-stop color gradient mapped to normalized probability (t):
+      //   0.00–0.25: dark indigo (#0d1b2a) → navy (#1b4965)
+      //   0.25–0.50: navy → emerald (#10b981)
+      //   0.50–0.75: emerald → bright green/yellow (#fbbf24)
+      //   0.75–1.00: yellow plateau
+      // Each segment linearly interpolates R, G, B independently.
+      let r, g, b;
+      if (t < 0.25) {
+        const s = t / 0.25;
+        r = Math.round(13 + s * 14);
+        g = Math.round(27 + s * 46);
+        b = Math.round(42 + s * 59);
+      } else if (t < 0.5) {
+        const s = (t - 0.25) / 0.25;
+        r = Math.round(27 - s * 11);
+        g = Math.round(73 + s * 112);
+        b = Math.round(101 + s * 28);
+      } else if (t < 0.75) {
+        const s = (t - 0.5) / 0.25;
+        r = Math.round(16 + s * 235);
+        g = Math.round(185 + s * 6);
+        b = Math.round(129 - s * 93);
+      } else {
+        const s = (t - 0.75) / 0.25;
+        r = Math.round(251);
+        g = Math.round(191 - s * 2);
+        b = Math.round(36 + s * 0);
+      }
+
+      cell.style.background = `rgba(${r}, ${g}, ${b}, ${Math.max(t * 0.85, 0.06)})`;
+      if (t < 0.1) cell.style.color = 'rgba(255,255,255,0.15)';
+      cell.setAttribute('data-tooltip', `${i}-${j}: ${(v*100).toFixed(2)}%`);
+      cell.title = `${i}-${j}: ${(v*100).toFixed(2)}%`;
+
+      // Diagonal wave animation
+      cell.style.opacity = '0';
+      cell.style.animation = `popIn 0.4s ease-out forwards`;
+      cell.style.animationDelay = `${(i + j) * HEATMAP_ANIM_DELAY}s`;
+      el.appendChild(cell);
+    }
+  }
+}
+
+function renderGoalDist(matrix) {
+  const svg = document.getElementById('goalDistSvg');
+  svg.innerHTML = '';
+  if (!matrix || !matrix.length || !matrix.flat().some(v => v > 0)) {
+    svg.innerHTML = '<text x="200" y="110" text-anchor="middle" fill="#6b7280" font-size="13">Scoreline data unavailable</text>';
+    return;
+  }
+
+  // Sum rows for home, columns for away
+  const homeProbs = Array(9).fill(0);
+  const awayProbs = Array(9).fill(0);
+  for (let i = 0; i < 9; i++) {
+    for (let j = 0; j < 9; j++) {
+      const v = matrix[i]?.[j] || 0;
+      homeProbs[i] += v;
+      awayProbs[j] += v;
+    }
+  }
+
+  const maxP = Math.max(...homeProbs, ...awayProbs);
+  const w = 400, h = 220, padL = 44, padR = 10, padT = 16, padB = 36;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+
+  function svgEl(tag, attrs) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  }
+  function svgText(x, y, text, opts = {}) {
+    const el = svgEl('text', {
+      x, y, fill: opts.fill || '#6b7280', 'font-size': opts.size || '10',
+      'font-family': 'JetBrains Mono, monospace', 'text-anchor': opts.anchor || 'middle', ...opts.extra || {}
+    });
+    el.textContent = text;
+    return el;
+  }
+
+  // Y-axis labels and grid lines
+  const yTicks = 5;
+  for (let i = 0; i <= yTicks; i++) {
+    const pct = (maxP * 100 * i / yTicks);
+    const y = padT + plotH - (i / yTicks) * plotH;
+    svg.appendChild(svgEl('line', { x1: padL, y1: y, x2: w - padR, y2: y, stroke: 'rgba(255,255,255,0.05)' }));
+    svg.appendChild(svgText(padL - 6, y + 3, pct.toFixed(0) + '%', { anchor: 'end', size: '9' }));
+  }
+
+  // X-axis labels
+  for (let i = 0; i <= 6; i++) {
+    const x = padL + (i / 8) * plotW;
+    svg.appendChild(svgText(x, h - padB + 14, i, { size: '11' }));
+  }
+  // X-axis title
+  svg.appendChild(svgText(padL + plotW / 2, h - 2, 'Goals Scored', { size: '10', fill: '#9ca3af' }));
+  // Y-axis title
+  const yLabel = svgText(12, padT + plotH / 2, 'Probability', { size: '10', fill: '#9ca3af', extra: { transform: `rotate(-90, 12, ${padT + plotH / 2})` } });
+  svg.appendChild(yLabel);
+
+  // Store coords for hover interaction
+  const goalDistData = [];
+
+  function drawArea(probs, color, opacity, label) {
+    const coords = probs.slice(0, 7).map((p, i) => {
+      const x = padL + (i / 8) * plotW;
+      const y = padT + plotH - (p / maxP) * plotH;
+      return { x, y, p, goals: i };
+    });
+
+    const pointStr = coords.map(c => `${c.x},${c.y}`).join(' ');
+    const baseLine = `${coords[coords.length-1].x},${padT + plotH} ${coords[0].x},${padT + plotH}`;
+    svg.appendChild(svgEl('polygon', { points: pointStr + ' ' + baseLine, fill: color, opacity }));
+    svg.appendChild(svgEl('polyline', { points: pointStr, fill: 'none', stroke: color, 'stroke-width': '2' }));
+
+    coords.forEach(c => {
+      svg.appendChild(svgEl('circle', { cx: c.x, cy: c.y, r: '3.5', fill: color }));
+    });
+    coords.forEach(c => goalDistData.push({ ...c, color, label }));
+  }
+
+  drawArea(homeProbs, '#10b981', '0.15', 'Home');
+  drawArea(awayProbs, '#ef4444', '0.12', 'Away');
+
+  // Hover interaction
+  const gdContainer = document.getElementById('goalDistContainer');
+  const gdTip = document.getElementById('goalDistTooltip');
+  const gdCross = document.getElementById('goalDistCrosshair');
+  gdContainer.addEventListener('mousemove', function(e) {
+    const containerRect = gdContainer.getBoundingClientRect();
+    const svgX = screenToSvgX(svg, e.clientX);
+    // Find closest goal column
+    let closestGoal = 0, minDist = Infinity;
+    for (let i = 0; i <= 6; i++) {
+      const x = padL + (i / 8) * plotW;
+      const d = Math.abs(x - svgX);
+      if (d < minDist) { minDist = d; closestGoal = i; }
+    }
+    const colX = padL + (closestGoal / 8) * plotW;
+    const screenX = svgToScreenX(svg, colX, containerRect);
+    gdCross.style.left = screenX + 'px';
+    gdCross.classList.add('visible');
+    const hP = (homeProbs[closestGoal] * 100).toFixed(1);
+    const aP = (awayProbs[closestGoal] * 100).toFixed(1);
+    gdTip.innerHTML = '<div style="font-weight:600;color:#e5e7eb">' + closestGoal + ' goal' + (closestGoal !== 1 ? 's' : '') + '</div>' +
+      '<div style="color:#10b981">Home: ' + hP + '%</div>' +
+      '<div style="color:#ef4444">Away: ' + aP + '%</div>';
+    gdTip.classList.add('visible');
+    gdTip.style.left = Math.min(screenX + 12, containerRect.width - 130) + 'px';
+    gdTip.style.top = '8px';
+  });
+  gdContainer.addEventListener('mouseleave', function() {
+    gdTip.classList.remove('visible');
+    gdCross.classList.remove('visible');
+  });
+}
+
+function renderModels(tiers) {
+  const el = document.getElementById('modelTable');
+  el.innerHTML = '';
+  MODEL_ORDER.filter(k => tiers[k]).forEach(name => {
+    const p = tiers[name];
+    const row = document.createElement('tr');
+    if (name === 'ensemble') row.className = 'row-ensemble';
+    const badge = name === 'ensemble' ? '<span class="ensemble-badge">REC</span>' : '';
+    row.innerHTML = `<td>${MODEL_NAMES[name]}${badge}</td><td>${(p.home*100).toFixed(1)}%</td><td>${(p.draw*100).toFixed(1)}%</td><td>${(p.away*100).toFixed(1)}%</td>`;
+    el.appendChild(row);
+  });
+}
+
+function renderForm(side, data) {
+  const el = document.getElementById(side + 'Form');
+  el.innerHTML = '';
+  if (!data || !data.matches || !data.matches.length) {
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:#6b7280;font-size:13px">No recent matches found</div>';
+    return;
+  }
+
+  const header = document.createElement('div');
+  header.innerHTML = `
+    <div class="form-team-header">
+      <span class="form-team-name">${teamLogo(data.team, 20)} ${data.team}</span>
+      <span class="form-record">${data.summary.wins}W ${data.summary.draws}D ${data.summary.losses}L</span>
+    </div>
+    <div class="form-badges">${data.matches.map(m => `<div class="form-badge badge-${m.result}">${m.result}</div>`).join('')}</div>
+  `;
+  el.appendChild(header);
+
+  data.matches.forEach((m, idx) => {
+    const row = document.createElement('div');
+    row.className = 'form-match';
+    row.style.opacity = '0';
+    row.style.animation = `fadeInUp 0.4s ease-out forwards`;
+    row.style.animationDelay = `${idx * FORM_ROW_ANIM_DELAY}s`;
+    row.innerHTML = `
+      <div class="fm-result ${m.result}"></div>
+      <div class="fm-venue">${m.venue === 'home' ? 'H' : 'A'}</div>
+      <div class="fm-opponent">${m.opponent}</div>
+      <div class="fm-score">${m.goals_for}-${m.goals_against}</div>
+      <div class="fm-xg">${m.xg_for !== undefined ? 'xG ' + m.xg_for + '-' + m.xg_against : ''}</div>
+    `;
+    el.appendChild(row);
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   TEAMS PAGE
+   ═══════════════════════════════════════════════ */
+async function loadSeasons() {
+  try {
+    const res = await fetchWithTimeout(API + '/seasons');
+    const data = await res.json();
+    const sel = document.getElementById('seasonSelect');
+    while (sel.options.length > 1) sel.remove(1);
+    data.seasons.forEach(s => sel.add(new Option(s, s)));
+    // Default to most recent season
+    if (data.seasons.length > 0) sel.value = data.seasons[0];
+  } catch(e) {
+    // Fallback seasons
+    const sel = document.getElementById('seasonSelect');
+    ['2024-2025','2023-2024','2022-2023','2021-2022','2020-2021'].forEach(s =>
+      sel.add(new Option(s, s))
+    );
+    sel.value = '2024-2025';
+  }
+}
+loadSeasons();
+
+/** Build Goal Difference bar chart SVG markup and hover coordinates */
+function buildGDChart(matches) {
+  const gdData = matches.map((m, i) => ({
+    gd: m.goals_for - m.goals_against,
+    result: m.result, opponent: m.opponent,
+    score: `${m.goals_for}-${m.goals_against}`, gw: i + 1
+  }));
+  const maxGD = Math.max(...gdData.map(d => Math.abs(d.gd)), 1);
+  const W = 400, H = 172, PL = 36, PR = 10, PT = 10, PB = 40;
+  const plotW = W - PL - PR, plotH = H - PT - PB;
+  const midY = PT + plotH / 2;
+  const barW = Math.max(2, (plotW / gdData.length) - 2);
+
+  let bars = '';
+  const coords = [];
+  gdData.forEach((d, i) => {
+    const x = PL + (i / Math.max(gdData.length - 1, 1)) * (plotW - barW) + barW / 2;
+    const barH = (Math.abs(d.gd) / maxGD) * (plotH / 2 - 4);
+    const y = d.gd >= 0 ? midY - barH : midY;
+    const color = d.result === 'W' ? '#10b981' : d.result === 'D' ? '#f59e0b' : '#ef4444';
+    bars += `<rect x="${x - barW/2}" y="${y}" width="${barW}" height="${Math.max(barH, 2)}" rx="1.5" fill="${color}" opacity="0.8"/>`;
+    coords.push({ x, gw: d.gw, gd: d.gd, result: d.result, opponent: d.opponent, score: d.score });
+  });
+
+  let yAxes = '';
+  [-maxGD, 0, maxGD].forEach(val => {
+    const y = midY - (val / maxGD) * (plotH / 2 - 4);
+    yAxes += `<line x1="${PL}" y1="${y}" x2="${W - PR}" y2="${y}" stroke="rgba(255,255,255,${val === 0 ? '0.12' : '0.04'})"/>`;
+    yAxes += `<text x="${PL - 5}" y="${y + 3}" text-anchor="end" fill="#6b7280" font-size="9" font-family="JetBrains Mono, monospace">${val > 0 ? '+' : ''}${val}</text>`;
+  });
+
+  let xAxes = '';
+  const xStep = Math.max(1, Math.floor(gdData.length / 5));
+  for (let i = 0; i < gdData.length; i += xStep) {
+    const x = PL + (i / Math.max(gdData.length - 1, 1)) * (plotW - barW) + barW / 2;
+    xAxes += `<text x="${x}" y="${H - 16}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="JetBrains Mono, monospace">${i + 1}</text>`;
+  }
+  const lastX = PL + (plotW - barW) + barW / 2;
+  xAxes += `<text x="${lastX}" y="${H - 16}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="JetBrains Mono, monospace">${gdData.length}</text>`;
+
+  const svg = `<svg viewBox="0 0 ${W} ${H}" class="sparkline-svg" style="margin-top:4px;height:${H}px" id="gdSvg">
+    ${yAxes}${xAxes}
+    <text x="${W / 2}" y="${H - 2}" text-anchor="middle" fill="#9ca3af" font-size="9" font-family="JetBrains Mono, monospace">Matchday</text>
+    <text x="8" y="${midY}" text-anchor="middle" fill="#9ca3af" font-size="9" font-family="JetBrains Mono, monospace" transform="rotate(-90, 8, ${midY})">GD</text>
+    ${bars}
+  </svg>`;
+
+  return { svg, coords, width: W, height: H };
+}
+
+/** Build xG trend chart SVG markup and hover coordinates. Returns null if no xG data. */
+function buildXGChart(matches) {
+  if (!matches.some(m => m.xg_for !== undefined)) return null;
+
+  const xgFor = [], xgAgainst = [];
+  matches.forEach(m => { xgFor.push(m.xg_for ?? 0); xgAgainst.push(m.xg_against ?? 0); });
+  const maxXg = Math.ceil(Math.max(...xgFor, ...xgAgainst) * 10) / 10;
+  const W = 400, H = 192, PL = 36, PR = 10, PT = 10, PB = 40;
+  const plotW = W - PL - PR, plotH = H - PT - PB;
+
+  const forCoords = xgFor.map((v, i) => ({ x: PL + (i / Math.max(xgFor.length - 1, 1)) * plotW, y: PT + plotH - (v / maxXg) * plotH, v }));
+  const agCoords = xgAgainst.map((v, i) => ({ x: PL + (i / Math.max(xgAgainst.length - 1, 1)) * plotW, y: PT + plotH - (v / maxXg) * plotH, v }));
+  const forPts = forCoords.map(c => `${c.x},${c.y}`).join(' ');
+  const agPts = agCoords.map(c => `${c.x},${c.y}`).join(' ');
+
+  let yAxes = '';
+  for (let i = 0; i <= 4; i++) {
+    const val = (maxXg * i / 4).toFixed(1);
+    const y = PT + plotH - (i / 4) * plotH;
+    yAxes += `<line x1="${PL}" y1="${y}" x2="${W - PR}" y2="${y}" stroke="rgba(255,255,255,0.05)"/>`;
+    yAxes += `<text x="${PL - 6}" y="${y + 3}" text-anchor="end" fill="#6b7280" font-size="9" font-family="JetBrains Mono, monospace">${val}</text>`;
+  }
+
+  let xAxes = '';
+  const xStep = Math.max(1, Math.floor(xgFor.length / 5));
+  for (let i = 0; i < xgFor.length; i += xStep) {
+    const x = PL + (i / Math.max(xgFor.length - 1, 1)) * plotW;
+    xAxes += `<text x="${x}" y="${H - 16}" text-anchor="middle" fill="#6b7280" font-size="9" font-family="JetBrains Mono, monospace">${i + 1}</text>`;
+  }
+  if (xgFor.length % xStep > 2) {
+    xAxes += `<text x="${PL + plotW}" y="${H - 16}" text-anchor="end" fill="#6b7280" font-size="9" font-family="JetBrains Mono, monospace">${xgFor.length}</text>`;
+  }
+
+  const avgFor = xgFor.reduce((a, b) => a + b, 0) / xgFor.length;
+  const avgAg = xgAgainst.reduce((a, b) => a + b, 0) / xgAgainst.length;
+  const avgForY = PT + plotH - (avgFor / maxXg) * plotH;
+  const avgAgY = PT + plotH - (avgAg / maxXg) * plotH;
+
+  const hoverCoords = xgFor.map((v, i) => ({
+    x: PL + (i / Math.max(xgFor.length - 1, 1)) * plotW, gw: i + 1,
+    xgFor: v, xgAg: xgAgainst[i],
+    opponent: matches[i]?.opponent || '',
+    score: matches[i] ? matches[i].goals_for + '-' + matches[i].goals_against : '',
+    result: matches[i]?.result || ''
+  }));
+
+  const svg = `
+    <div class="glass-card">
+      <div class="section-title">xG Per Match</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:4px">Expected goals created (solid green) vs conceded (dashed red) each gameweek.</div>
+      <div class="chart-container" id="xgChartContainer">
+      <svg viewBox="0 0 ${W} ${H}" class="sparkline-svg" style="margin-top:4px;height:${H}px" id="xgSvg">
+        ${yAxes}${xAxes}
+        <text x="${W / 2}" y="${H - 2}" text-anchor="middle" fill="#9ca3af" font-size="9" font-family="JetBrains Mono, monospace">Matchday</text>
+        <text x="10" y="${PT + plotH / 2}" text-anchor="middle" fill="#9ca3af" font-size="9" font-family="JetBrains Mono, monospace" transform="rotate(-90, 10, ${PT + plotH / 2})">xG</text>
+        <line x1="${PL}" y1="${avgForY}" x2="${W - PR}" y2="${avgForY}" stroke="#10b981" stroke-width="1" stroke-dasharray="2 4" opacity="0.4"/>
+        <text x="${PL + 4}" y="${avgForY - 4}" text-anchor="start" fill="#10b981" font-size="8" font-family="JetBrains Mono, monospace" opacity="0.8">${avgFor.toFixed(2)}</text>
+        <line x1="${PL}" y1="${avgAgY}" x2="${W - PR}" y2="${avgAgY}" stroke="#ef4444" stroke-width="1" stroke-dasharray="2 4" opacity="0.4"/>
+        <text x="${PL + 4}" y="${avgAgY + 12}" text-anchor="start" fill="#ef4444" font-size="8" font-family="JetBrains Mono, monospace" opacity="0.8">${avgAg.toFixed(2)}</text>
+        <polygon points="${forCoords[0].x},${PT + plotH} ${forPts} ${forCoords[forCoords.length-1].x},${PT + plotH}" fill="rgba(16,185,129,0.1)"/>
+        <polyline points="${forPts}" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <polygon points="${agCoords[0].x},${PT + plotH} ${agPts} ${agCoords[agCoords.length-1].x},${PT + plotH}" fill="rgba(239,68,68,0.06)"/>
+        <polyline points="${agPts}" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4 3" stroke-linecap="round"/>
+      </svg>
+      <div class="chart-crosshair" id="xgCrosshair" style="height:${H}px"></div>
+      <div class="chart-tooltip" id="xgTooltip"></div>
+      </div>
+      <div class="goal-dist-legend" style="margin-top:4px">
+        <span><span class="dot-home">&#9679;</span> xG For (avg ${avgFor.toFixed(2)})</span>
+        <span><span class="dot-away">&#9679;</span> xG Against (avg ${avgAg.toFixed(2)})</span>
+      </div>
+    </div>`;
+
+  return { svg, coords: hoverCoords, width: W };
+}
+
+/** Build the full season HTML from summary stats, charts, and match list */
+function buildSeasonHTML(team, season, data, gdChart, xgChart) {
+  const s = data.summary;
+  const homeMatches = data.matches.filter(m => m.venue === 'home');
+  const awayMatches = data.matches.filter(m => m.venue === 'away');
+  const count = (arr, r) => arr.filter(m => m.result === r).length;
+  const homeW = count(homeMatches, 'W'), homeD = count(homeMatches, 'D'), homeL = count(homeMatches, 'L');
+  const awayW = count(awayMatches, 'W'), awayD = count(awayMatches, 'D'), awayL = count(awayMatches, 'L');
+  const badges = (w, d, l) => 'W'.repeat(w).split('').map(() => '<div class="form-badge badge-W">W</div>').join('') +
+    'D'.repeat(d).split('').map(() => '<div class="form-badge badge-D">D</div>').join('') +
+    'L'.repeat(l).split('').map(() => '<div class="form-badge badge-L">L</div>').join('');
+
+  const xgBlock = xgChart
+    ? xgChart.svg
+    : `<div class="glass-card"><div class="section-title">xG Per Match</div><div style="padding:20px;text-align:center;color:#6b7280;font-size:13px">xG data not available for this season.</div></div>`;
+
+  return `
+    <div class="bento-grid">
+      <div class="glass-card span-2">
+        <div class="section-title" style="display:flex;align-items:center;gap:10px">${teamLogo(team, 28)} ${team} — ${season} Season</div>
+        <div style="display:flex; gap:24px; margin-top:16px; flex-wrap:wrap; justify-content:center;">
+          <div style="text-align:center"><span class="stat-number" style="font-size:28px">${s.points}</span><div class="stat-label">Points</div></div>
+          <div style="text-align:center"><span class="stat-number" style="font-size:28px">${s.wins}</span><div class="stat-label">Wins</div></div>
+          <div style="text-align:center"><span class="stat-number" style="font-size:28px">${s.draws}</span><div class="stat-label">Draws</div></div>
+          <div style="text-align:center"><span class="stat-number" style="font-size:28px">${s.losses}</span><div class="stat-label">Losses</div></div>
+          <div style="text-align:center"><span class="stat-number" style="font-size:28px">${s.goals_scored}</span><div class="stat-label">GF</div></div>
+          <div style="text-align:center"><span class="stat-number" style="font-size:28px">${s.goals_conceded}</span><div class="stat-label">GA</div></div>
+          <div style="text-align:center"><span class="stat-number" style="font-size:28px">${s.goal_difference > 0 ? '+' : ''}${s.goal_difference}</span><div class="stat-label">GD</div></div>
+          <div style="text-align:center"><span class="stat-number" style="font-size:28px">${s.clean_sheets}</span><div class="stat-label">Clean Sheets</div></div>
+          <div style="text-align:center"><span class="stat-number" style="font-size:28px">${s.win_rate}%</span><div class="stat-label">Win Rate</div></div>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <div class="section-title">Goal Difference Per Match</div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:4px">Each bar shows how many goals the team won or lost by. <span style="color:#10b981">Green</span> = win, <span style="color:#f59e0b">amber</span> = draw, <span style="color:#ef4444">red</span> = loss.</div>
+        <div class="chart-container" id="gdChartContainer">
+          ${gdChart.svg}
+          <div class="chart-crosshair" id="gdCrosshair" style="height:${gdChart.height}px"></div>
+          <div class="chart-tooltip" id="gdTooltip"></div>
+        </div>
+      </div>
+
+      ${xgBlock}
+
+      <div class="glass-card span-2">
+        <div class="section-title">Home vs Away Split</div>
+        <div class="home-away-grid">
+          <div>
+            <div style="font-size:14px;font-weight:600;color:#f3f4f6;margin-bottom:8px">Home (${homeMatches.length} matches)</div>
+            <div class="form-badges">${badges(homeW, homeD, homeL)}</div>
+            <div style="font-size:13px;color:#9ca3af;margin-top:4px;font-family:'JetBrains Mono',monospace">${homeW}W ${homeD}D ${homeL}L — ${homeW * 3 + homeD} pts</div>
+          </div>
+          <div>
+            <div style="font-size:14px;font-weight:600;color:#f3f4f6;margin-bottom:8px">Away (${awayMatches.length} matches)</div>
+            <div class="form-badges">${badges(awayW, awayD, awayL)}</div>
+            <div style="font-size:13px;color:#9ca3af;margin-top:4px;font-family:'JetBrains Mono',monospace">${awayW}W ${awayD}D ${awayL}L — ${awayW * 3 + awayD} pts</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card span-2">
+        <div class="section-title">All Matches (${data.total_matches})</div>
+        <div class="form-badges" style="margin-top:8px;flex-wrap:wrap">${data.matches.map(m => `<div class="form-badge badge-${m.result}" title="${m.date}: ${m.goals_for}-${m.goals_against} vs ${m.opponent}">${m.result}</div>`).join('')}</div>
+        <div style="margin-top:12px; max-height:400px; overflow-y:auto;">
+          ${data.matches.map((m, idx) => `
+            <div class="form-match" style="opacity:0;animation:fadeInUp 0.3s ease-out ${idx * 0.02}s forwards">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b7280;width:70px;flex-shrink:0">${m.date.slice(5)}</div>
+              <div class="fm-result ${m.result}"></div>
+              <div class="fm-venue">${m.venue === 'home' ? 'H' : 'A'}</div>
+              <div class="fm-opponent">${m.opponent}</div>
+              <div class="fm-score">${m.goals_for}-${m.goals_against}</div>
+              <div class="fm-xg">${m.xg_for !== undefined ? 'xG ' + m.xg_for + '-' + m.xg_against : ''}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildUpcomingHTML(fixtures, selectedTeam) {
+  if (!fixtures || fixtures.length === 0) {
+    return `
+      <div class="upcoming-section">
+        <div class="glass-card">
+          <div class="section-title">Upcoming Fixtures</div>
+          <div class="upcoming-empty">No more Premier League fixtures scheduled for this season.</div>
+        </div>
+      </div>`;
+  }
+
+  const fmtFixture = (date, time) => {
+    if (!date || date === 'TBD') return { day: 'TBD', time: '' };
+    const utc = time ? `${date}T${time}:00Z` : `${date}T00:00:00Z`;
+    const dt = new Date(utc);
+    const day = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    if (!time) return { day, time: '' };
+    const t = dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return { day, time: t };
+  };
+
+  const rows = fixtures.map((f, idx) => {
+    const { day, time } = fmtFixture(f.date, f.time);
+    const homeTeam = f.venue === 'home' ? selectedTeam : f.opponent;
+    const awayTeam = f.venue === 'home' ? f.opponent : selectedTeam;
+    const homeSelected = f.venue === 'home' ? ' is-selected' : '';
+    const awaySelected = f.venue === 'away' ? ' is-selected' : '';
+    return `
+    <div class="upcoming-fixture" style="opacity:0;transform:translateY(12px)" data-upcoming-idx="${idx}">
+      <div class="upcoming-left">
+        ${f.matchday ? `<div class="upcoming-matchday">GW ${f.matchday}</div>` : ''}
+        <div class="upcoming-date">${day}${time ? ' · ' + time : ''}</div>
+      </div>
+      <div class="upcoming-venue ${f.venue}">${f.venue === 'home' ? 'HOME' : 'AWAY'}</div>
+      <div class="upcoming-teams">
+        <div class="upcoming-team${homeSelected}">
+          <span class="upcoming-team-name">${homeTeam}</span>
+          ${teamLogo(homeTeam, 24)}
+        </div>
+        <div class="upcoming-vs">vs</div>
+        <div class="upcoming-team${awaySelected}">
+          ${teamLogo(awayTeam, 24)}
+          <span class="upcoming-team-name">${awayTeam}</span>
+        </div>
+      </div>
+      <button class="upcoming-predict" onclick="switchTab('matches'); document.getElementById('homeTeam').value='${homeTeam}'; document.getElementById('awayTeam').value='${awayTeam}'; predict();">PREDICT</button>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="upcoming-section">
+      <div class="glass-card">
+        <div class="section-title">Upcoming Fixtures (${fixtures.length})</div>
+        ${rows}
+      </div>
+    </div>`;
+}
+
+/** Orchestrator: fetch season data and render the team profile page */
+async function loadTeamSeason() {
+  const team = document.getElementById('teamSelect').value;
+  const season = document.getElementById('seasonSelect').value;
+  const area = document.getElementById('teamProfileArea');
+  if (!team || !season) { area.innerHTML = ''; return; }
+
+  area.innerHTML = `<div class="bento-grid">
+    <div class="glass-card no-anim span-2" style="padding:32px">
+      <div class="skeleton skeleton-line w-40"></div>
+      <div style="display:flex;gap:24px;margin-top:16px;flex-wrap:wrap">
+        ${Array(7).fill('<div style="text-align:center"><div class="skeleton" style="width:48px;height:28px;margin:0 auto 6px"></div><div class="skeleton skeleton-line w-80" style="width:40px;margin:0 auto"></div></div>').join('')}
+      </div>
+    </div>
+    <div class="glass-card no-anim"><div class="skeleton skeleton-line w-60"></div><div class="skeleton skeleton-block" style="margin-top:12px"></div></div>
+    <div class="glass-card no-anim"><div class="skeleton skeleton-line w-60"></div><div class="skeleton skeleton-block" style="margin-top:12px"></div></div>
+  </div>`;
+
+  try {
+    const res = await fetchWithTimeout(`${API}/teams/${encodeTeam(team)}/season/${encodeTeam(season)}`);
+    if (!res.ok) {
+      area.innerHTML = `<div style="text-align:center;padding:40px;color:#6b7280;">${team} did not play in ${season}.</div>`;
+      return;
+    }
+    const data = await res.json();
+
+    const gdChart = buildGDChart(data.matches);
+    const xgChart = buildXGChart(data.matches);
+
+    area.innerHTML = buildSeasonHTML(team, season, data, gdChart, xgChart);
+    observeCards();
+
+    // Attach hover handlers after DOM is ready
+    setupChartHover('gdChartContainer', 'gdSvg', 'gdTooltip', 'gdCrosshair', gdChart.coords, gdChart.width, function(c) {
+      const color = c.result === 'W' ? '#10b981' : c.result === 'D' ? '#f59e0b' : '#ef4444';
+      return '<div style="font-weight:600;color:' + color + '">GW ' + c.gw + ' vs ' + c.opponent + '</div>' +
+        '<div>Result: ' + c.score + '</div>' +
+        '<div style="color:' + color + '">GD: ' + (c.gd > 0 ? '+' : '') + c.gd + '</div>';
+    });
+
+    if (xgChart) {
+      setupChartHover('xgChartContainer', 'xgSvg', 'xgTooltip', 'xgCrosshair', xgChart.coords, xgChart.width, function(c) {
+        const color = c.result === 'W' ? '#10b981' : c.result === 'D' ? '#f59e0b' : '#ef4444';
+        return '<div style="font-weight:600;color:' + color + '">GW ' + c.gw + ' vs ' + c.opponent + '</div>' +
+          '<div>Result: ' + c.score + '</div>' +
+          '<div style="color:#10b981">xG For: ' + c.xgFor.toFixed(2) + '</div>' +
+          '<div style="color:#ef4444">xG Against: ' + c.xgAg.toFixed(2) + '</div>';
+      });
+    }
+
+    // Append upcoming fixtures below the bento-grid
+    const upcomingContainer = document.createElement('div');
+    upcomingContainer.id = 'upcomingFixturesArea';
+    area.appendChild(upcomingContainer);
+
+    fetchWithTimeout(`${API}/teams/${encodeTeam(team)}/upcoming`)
+      .then(res => res.ok ? res.json() : { fixtures: [] })
+      .then(upData => {
+        upcomingContainer.innerHTML = buildUpcomingHTML(upData.fixtures, team);
+        observeCards();
+        requestAnimationFrame(() => {
+          const items = upcomingContainer.querySelectorAll('.upcoming-fixture');
+          if (items.length > 0) {
+            gsap.to(items, {
+              opacity: 1, y: 0,
+              duration: 0.4, stagger: 0.06,
+              ease: 'power2.out', delay: 0.2,
+            });
+          }
+        });
+      })
+      .catch(() => {
+        upcomingContainer.innerHTML = buildUpcomingHTML([]);
+      });
+
+  } catch(e) {
+    area.innerHTML = buildErrorState('Could not load team data: ' + e.message, 'loadTeamSeason()');
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   SVG COORDINATE HELPERS
+   Converts between browser screen pixels and SVG viewBox units using
+   the SVG Current Transform Matrix (CTM). This is necessary because
+   SVG viewBox scaling (preserveAspectRatio) means CSS pixels ≠ SVG units.
+   getScreenCTM() gives us the exact transform the browser applies.
+   ═══════════════════════════════════════════════ */
+function screenToSvgX(svg, clientX) {
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = 0;
+  return pt.matrixTransform(svg.getScreenCTM().inverse()).x;
+}
+
+function svgToScreenX(svg, svgX, containerRect) {
+  const pt = svg.createSVGPoint();
+  pt.x = svgX;
+  pt.y = 0;
+  const screenPt = pt.matrixTransform(svg.getScreenCTM());
+  return screenPt.x - containerRect.left;
+}
+
+/* ═══════════════════════════════════════════════
+   CHART HOVER SETUP
+   Reusable hover interaction for any SVG chart: attaches mousemove/leave
+   to a container, finds the nearest data point by SVG x-coordinate,
+   positions a vertical crosshair line and floating tooltip.
+   Used by GD chart, xG chart, and goal distribution chart.
+   ═══════════════════════════════════════════════ */
+function setupChartHover(containerId, svgId, tooltipId, crosshairId, coords, svgWidth, tooltipFn) {
+  const container = document.getElementById(containerId);
+  const svg = document.getElementById(svgId);
+  const tooltip = document.getElementById(tooltipId);
+  const crosshair = document.getElementById(crosshairId);
+  if (!container || !svg || !tooltip || !crosshair) return;
+
+  container.addEventListener('mousemove', function(e) {
+    const containerRect = container.getBoundingClientRect();
+    const svgX = screenToSvgX(svg, e.clientX);
+    let closest = coords[0], minDist = Infinity;
+    coords.forEach(c => { const d = Math.abs(c.x - svgX); if (d < minDist) { minDist = d; closest = c; } });
+    const screenX = svgToScreenX(svg, closest.x, containerRect);
+    crosshair.style.left = screenX + 'px';
+    crosshair.style.height = svg.getBoundingClientRect().height + 'px';
+    crosshair.classList.add('visible');
+    tooltip.innerHTML = tooltipFn(closest);
+    tooltip.classList.add('visible');
+    tooltip.style.left = Math.min(screenX + 12, containerRect.width - 170) + 'px';
+    tooltip.style.top = '8px';
+  });
+  container.addEventListener('mouseleave', function() {
+    tooltip.classList.remove('visible');
+    crosshair.classList.remove('visible');
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   UTILITIES
+   ═══════════════════════════════════════════════ */
+function createDiv(cls, txt) { const d = document.createElement('div'); d.className = cls; d.textContent = txt; return d; }
+function encodeTeam(s) { return encodeURIComponent(s); }
+
+/** Reusable error state with icon, message, and optional retry button */
+function buildErrorState(message, retryFn) {
+  return `<div class="error-state">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+    <div class="error-state-title">Data Temporarily Unavailable</div>
+    <div class="error-state-desc">${message}</div>
+    ${retryFn ? `<button class="error-state-retry" onclick="${retryFn}">Try Again</button>` : ''}
+  </div>`;
+}
+/** Share current prediction via Web Share API or clipboard fallback */
+function sharePrediction() {
+  const home = document.getElementById('homeTeam').value;
+  const away = document.getElementById('awayTeam').value;
+  if (!home || !away) return;
+
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.searchParams.set('home', home);
+  url.searchParams.set('away', away);
+  const shareUrl = url.toString();
+
+  const btn = document.getElementById('shareBtn');
+
+  if (navigator.share) {
+    navigator.share({ title: `StatStriker: ${home} vs ${away}`, url: shareUrl }).catch(() => {});
+    return;
+  }
+
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Link Copied!';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share Prediction';
+    }, 2000);
+  });
+}
+
+function showError(msg) { const e = document.getElementById('errorMsg'); e.textContent = msg; e.style.display = 'block'; }
+function hideError() { document.getElementById('errorMsg').style.display = 'none'; }
+
+init();
+</script>
+</body>
+</html>

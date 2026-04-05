@@ -23,11 +23,13 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 # ── Project imports ──────────────────────────────────────────────────
 import sys
@@ -46,6 +48,7 @@ _resolver: EntityResolver | None = None
 _teams: list[str] = []
 _pipeline_state: dict = {}
 _df: pd.DataFrame | None = None
+_upcoming_fixtures: list[dict] = []
 
 FEATURES_PATH = ROOT_DIR / "data" / "processed" / "features.parquet"
 MODELS_DIR = ROOT_DIR / "data" / "models"
@@ -96,13 +99,69 @@ def _load_models():
         _pipeline_state = {}
 
 
+# ── Fixture fetching (FPL API) ──────────────────────────────────────
+
+def _fetch_upcoming_fixtures():
+    """Fetch upcoming PL fixtures from the Fantasy Premier League API."""
+    global _upcoming_fixtures
+
+    try:
+        # Fetch team ID → name mapping
+        teams_resp = httpx.get(
+            "https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15
+        )
+        teams_resp.raise_for_status()
+        team_map = {t["id"]: t["name"] for t in teams_resp.json()["teams"]}
+
+        # Fetch all fixtures, keep only unfinished
+        fix_resp = httpx.get(
+            "https://fantasy.premierleague.com/api/fixtures/", timeout=15
+        )
+        fix_resp.raise_for_status()
+
+        resolver = _resolver or EntityResolver()
+        fixtures = []
+        for f in fix_resp.json():
+            if f.get("finished", True):
+                continue
+
+            home_raw = team_map.get(f["team_h"], "")
+            away_raw = team_map.get(f["team_a"], "")
+
+            try:
+                home = resolver.resolve(home_raw)
+                away = resolver.resolve(away_raw)
+            except ValueError:
+                continue
+
+            kickoff = f.get("kickoff_time") or ""
+            fixtures.append({
+                "date": kickoff[:10] if kickoff else "TBD",
+                "time": kickoff[11:16] if kickoff else "",
+                "home_team": home,
+                "away_team": away,
+                "matchday": str(f.get("event", "")) if f.get("event") else "",
+            })
+
+        fixtures.sort(key=lambda x: (x["date"] == "TBD", x["date"]))
+        _upcoming_fixtures = fixtures
+        logger.info("Fetched %d upcoming PL fixtures from FPL API", len(fixtures))
+
+    except Exception as e:
+        logger.error("Failed to fetch fixtures from FPL API: %s", e)
+
+
 # ── Lifespan (startup/shutdown) ──────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load models into memory on startup."""
-    _load_models()
-    logger.info("API ready — %d teams, %d models", len(_teams), len(_predictor._models))
+    try:
+        _load_models()
+        logger.info("API ready — %d teams, %d models", len(_teams), len(_predictor._models))
+    except Exception as e:
+        logger.error("Failed to load models: %s — API will start in degraded mode", e)
+    _fetch_upcoming_fixtures()
     yield
     logger.info("API shutting down")
 
@@ -169,6 +228,9 @@ async def predict_match(
     Returns home/draw/away probabilities from all tiers (or a specific tier),
     plus the most likely scoreline and expected goals.
     """
+    if _predictor is None:
+        raise HTTPException(status_code=503, detail="Models not loaded. Server is starting up or encountered an error.")
+
     home = _resolve_team(home_team)
     away = _resolve_team(away_team)
 
@@ -199,6 +261,9 @@ async def scoreline_matrix(home_team: str, away_team: str):
 
     matrix[i][j] = P(home scores i, away scores j).
     """
+    if _predictor is None:
+        raise HTTPException(status_code=503, detail="Models not loaded. Server is starting up or encountered an error.")
+
     home = _resolve_team(home_team)
     away = _resolve_team(away_team)
 
@@ -290,6 +355,117 @@ async def team_form(team_name: str, last_n: int = Query(default=5, ge=1, le=20))
     }
 
 
+@app.get("/teams/{team_name}/season/{season}")
+async def team_season(team_name: str, season: str):
+    """
+    Get a team's full performance for a specific season.
+    Returns all matches, summary stats, and per-match xG.
+    """
+    team = _resolve_team(team_name)
+
+    # Filter to season
+    season_df = _df[_df["season"] == season]
+    if season_df.empty:
+        raise HTTPException(status_code=404, detail=f"No data for season '{season}'.")
+
+    home_mask = season_df["home_team"] == team
+    away_mask = season_df["away_team"] == team
+    matches = season_df[home_mask | away_mask].sort_values("date")
+
+    if matches.empty:
+        raise HTTPException(status_code=404, detail=f"No matches for '{team}' in season '{season}'.")
+
+    form = []
+    for _, row in matches.iterrows():
+        is_home = row["home_team"] == team
+        goals_for = int(row["home_goals"]) if is_home else int(row["away_goals"])
+        goals_against = int(row["away_goals"]) if is_home else int(row["home_goals"])
+
+        if goals_for > goals_against:
+            result = "W"
+        elif goals_for == goals_against:
+            result = "D"
+        else:
+            result = "L"
+
+        match_data = {
+            "date": row["date"].strftime("%Y-%m-%d"),
+            "opponent": row["away_team"] if is_home else row["home_team"],
+            "venue": "home" if is_home else "away",
+            "goals_for": goals_for,
+            "goals_against": goals_against,
+            "result": result,
+        }
+
+        if pd.notna(row.get("home_xg")) and pd.notna(row.get("away_xg")):
+            match_data["xg_for"] = round(float(row["home_xg"] if is_home else row["away_xg"]), 2)
+            match_data["xg_against"] = round(float(row["away_xg"] if is_home else row["home_xg"]), 2)
+
+        form.append(match_data)
+
+    results = [m["result"] for m in form]
+    gf = sum(m["goals_for"] for m in form)
+    gc = sum(m["goals_against"] for m in form)
+    wins = results.count("W")
+    draws = results.count("D")
+    losses = results.count("L")
+
+    return {
+        "team": team,
+        "season": season,
+        "total_matches": len(form),
+        "summary": {
+            "wins": wins,
+            "draws": draws,
+            "losses": losses,
+            "points": wins * 3 + draws,
+            "goals_scored": gf,
+            "goals_conceded": gc,
+            "goal_difference": gf - gc,
+            "goals_per_match": round(gf / len(form), 2) if form else 0,
+            "conceded_per_match": round(gc / len(form), 2) if form else 0,
+            "clean_sheets": sum(1 for m in form if m["goals_against"] == 0),
+            "win_rate": round(wins / len(form) * 100, 1) if form else 0,
+        },
+        "matches": form,
+    }
+
+
+@app.get("/teams/{team_name}/upcoming")
+async def team_upcoming(team_name: str):
+    """Get a team's upcoming (unplayed) fixtures from API-Football data."""
+    team = _resolve_team(team_name)
+
+    fixtures = []
+    for f in _upcoming_fixtures:
+        if f["home_team"] == team:
+            fixtures.append({
+                "date": f["date"],
+                "time": f["time"],
+                "opponent": f["away_team"],
+                "venue": "home",
+                "matchday": f["matchday"],
+            })
+        elif f["away_team"] == team:
+            fixtures.append({
+                "date": f["date"],
+                "time": f["time"],
+                "opponent": f["home_team"],
+                "venue": "away",
+                "matchday": f["matchday"],
+            })
+
+    return {"team": team, "fixtures": fixtures, "count": len(fixtures)}
+
+
+@app.get("/seasons")
+async def list_seasons():
+    """Return all available seasons."""
+    if _df is None:
+        return {"seasons": []}
+    return {"seasons": sorted(_df["season"].unique().tolist(), reverse=True)}
+
+
 @app.get("/status")
 async def pipeline_status():
     """Return pipeline state: last scrape/train dates, model version, etc."""
@@ -309,3 +485,19 @@ async def pipeline_status():
             "seasons": sorted(_df["season"].unique().tolist()) if _df is not None else [],
         },
     }
+
+
+# ── Serve frontend (must be AFTER all API routes) ──────────────────
+FRONTEND_DIR = ROOT_DIR / "frontend"
+if FRONTEND_DIR.exists():
+    from fastapi.responses import FileResponse
+
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend-static")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Serve index.html for any non-API route (SPA fallback)."""
+        file_path = FRONTEND_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(FRONTEND_DIR / "index.html"))
