@@ -494,6 +494,11 @@ if FRONTEND_DIR.exists():
 
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend-static")
 
+    @app.get("/")
+    async def serve_index():
+        """Serve the main SPA page."""
+        return FileResponse(str(FRONTEND_DIR / "index.html"))
+
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         """Serve index.html for any non-API route (SPA fallback)."""
