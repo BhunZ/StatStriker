@@ -199,7 +199,7 @@ def _resolve_team(name: str) -> str:
 
 # ── Endpoints ────────────────────────────────────────────────────────
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 async def health():
     """Health check."""
     return {
