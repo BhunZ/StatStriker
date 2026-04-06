@@ -741,7 +741,7 @@
     width: 20px;
     flex-shrink: 0;
   }
-  .fm-opponent { flex: 1; color: #d1d5db; }
+  .fm-opponent { flex: 1; color: #d1d5db; display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .fm-score {
     font-family: 'JetBrains Mono', monospace;
     font-weight: 600;
@@ -772,7 +772,8 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    min-width: 120px;
+    width: 140px;
+    min-width: 140px;
     flex-shrink: 0;
   }
   .upcoming-matchday {
@@ -1060,6 +1061,7 @@
     font-size: 13px;
     color: #9ca3af;
     line-height: 1.6;
+    text-align: justify;
   }
   .tech-stack {
     display: flex;
@@ -1143,7 +1145,7 @@
   .developer-info { flex: 1; }
   .developer-info h3 { font-size: 22px; font-weight: 800; color: #f9fafb; margin-bottom: 4px; }
   .developer-info .developer-title { font-size: 13px; font-weight: 600; color: #10b981; margin-bottom: 12px; }
-  .developer-info .developer-bio { font-size: 13px; color: #9ca3af; line-height: 1.7; max-width: 520px; }
+  .developer-info .developer-bio { font-size: 13px; color: #9ca3af; line-height: 1.7; max-width: 520px; text-align: justify; }
   .developer-links { display: flex; gap: 12px; flex-shrink: 0; }
   .social-btn {
     display: inline-flex;
@@ -1498,25 +1500,25 @@
         <div class="pipeline-step">
           <div class="step-icon">&#128375;</div>
           <div class="step-title">Web Scraping</div>
-          <div class="step-desc">1,000+ matches across 3 seasons collected from FBRef & Understat via ScraperAPI + GitHub Actions</div>
+          <div class="step-desc" style="text-align:justify">1,000+ matches across 3 seasons collected from FBRef & Understat via ScraperAPI + GitHub Actions</div>
         </div>
         <div class="pipeline-arrow">&#10132;</div>
         <div class="pipeline-step">
           <div class="step-icon">&#9881;</div>
           <div class="step-title">Data Processing</div>
-          <div class="step-desc">10,000+ match events processed through entity resolution, normalization & 50+ engineered features</div>
+          <div class="step-desc" style="text-align:justify">10,000+ match events processed through entity resolution, normalization & 50+ engineered features</div>
         </div>
         <div class="pipeline-arrow">&#10132;</div>
         <div class="pipeline-step">
           <div class="step-icon">&#129504;</div>
           <div class="step-title">Statistical Modeling</div>
-          <div class="step-desc">5-tier ensemble approach that outperforms any individual model across temporal cross-validation</div>
+          <div class="step-desc" style="text-align:justify">5-tier ensemble approach that outperforms any individual model across temporal cross-validation</div>
         </div>
         <div class="pipeline-arrow">&#10132;</div>
         <div class="pipeline-step">
           <div class="step-icon">&#127760;</div>
           <div class="step-title">Web Interface</div>
-          <div class="step-desc">Sub-second inference via FastAPI with interactive visualizations and real-time analytics</div>
+          <div class="step-desc" style="text-align:justify">Sub-second inference via FastAPI with interactive visualizations and real-time analytics</div>
         </div>
       </div>
     </div>
@@ -2316,7 +2318,7 @@ function renderForm(side, data) {
     row.innerHTML = `
       <div class="fm-result ${m.result}"></div>
       <div class="fm-venue">${m.venue === 'home' ? 'H' : 'A'}</div>
-      <div class="fm-opponent">${m.opponent}</div>
+      <div class="fm-opponent">${teamLogo(m.opponent, 16)} ${m.opponent}</div>
       <div class="fm-score">${m.goals_for}-${m.goals_against}</div>
       <div class="fm-xg">${m.xg_for !== undefined ? 'xG ' + m.xg_for + '-' + m.xg_against : ''}</div>
     `;
@@ -2348,7 +2350,7 @@ async function loadSeasons() {
 loadSeasons();
 
 /** Build Goal Difference bar chart SVG markup and hover coordinates */
-function buildGDChart(matches) {
+function buildGDChart(matches, team) {
   const gdData = matches.map((m, i) => ({
     gd: m.goals_for - m.goals_against,
     result: m.result, opponent: m.opponent,
@@ -2398,7 +2400,7 @@ function buildGDChart(matches) {
 }
 
 /** Build xG trend chart SVG markup and hover coordinates. Returns null if no xG data. */
-function buildXGChart(matches) {
+function buildXGChart(matches, team) {
   if (!matches.some(m => m.xg_for !== undefined)) return null;
 
   const xgFor = [], xgAgainst = [];
@@ -2445,7 +2447,7 @@ function buildXGChart(matches) {
 
   const svg = `
     <div class="glass-card">
-      <div class="section-title">xG Per Match</div>
+      <div class="section-title" style="display:flex;align-items:center;gap:8px">${teamLogo(team, 20)} xG Per Match</div>
       <div style="font-size:12px;color:#6b7280;margin-bottom:4px">Expected goals created (solid green) vs conceded (dashed red) each gameweek.</div>
       <div class="chart-container" id="xgChartContainer">
       <svg viewBox="0 0 ${W} ${H}" class="sparkline-svg" style="margin-top:4px;height:${H}px" id="xgSvg">
@@ -2487,7 +2489,7 @@ function buildSeasonHTML(team, season, data, gdChart, xgChart) {
 
   const xgBlock = xgChart
     ? xgChart.svg
-    : `<div class="glass-card"><div class="section-title">xG Per Match</div><div style="padding:20px;text-align:center;color:#6b7280;font-size:13px">xG data not available for this season.</div></div>`;
+    : `<div class="glass-card"><div class="section-title" style="display:flex;align-items:center;gap:8px">${teamLogo(team, 20)} xG Per Match</div><div style="padding:20px;text-align:center;color:#6b7280;font-size:13px">xG data not available for this season.</div></div>`;
 
   return `
     <div class="bento-grid">
@@ -2507,7 +2509,7 @@ function buildSeasonHTML(team, season, data, gdChart, xgChart) {
       </div>
 
       <div class="glass-card">
-        <div class="section-title">Goal Difference Per Match</div>
+        <div class="section-title" style="display:flex;align-items:center;gap:8px">${teamLogo(team, 20)} Goal Difference Per Match</div>
         <div style="font-size:12px;color:#6b7280;margin-bottom:4px">Each bar shows how many goals the team won or lost by. <span style="color:#10b981">Green</span> = win, <span style="color:#f59e0b">amber</span> = draw, <span style="color:#ef4444">red</span> = loss.</div>
         <div class="chart-container" id="gdChartContainer">
           ${gdChart.svg}
@@ -2519,7 +2521,7 @@ function buildSeasonHTML(team, season, data, gdChart, xgChart) {
       ${xgBlock}
 
       <div class="glass-card span-2">
-        <div class="section-title">Home vs Away Split</div>
+        <div class="section-title" style="display:flex;align-items:center;gap:8px">${teamLogo(team, 20)} Home vs Away Split</div>
         <div class="home-away-grid">
           <div>
             <div style="font-size:14px;font-weight:600;color:#f3f4f6;margin-bottom:8px">Home (${homeMatches.length} matches)</div>
@@ -2535,7 +2537,7 @@ function buildSeasonHTML(team, season, data, gdChart, xgChart) {
       </div>
 
       <div class="glass-card span-2">
-        <div class="section-title">All Matches (${data.total_matches})</div>
+        <div class="section-title" style="display:flex;align-items:center;gap:8px">${teamLogo(team, 20)} All Matches (${data.total_matches})</div>
         <div class="form-badges" style="margin-top:8px;flex-wrap:wrap">${data.matches.map(m => `<div class="form-badge badge-${m.result}" title="${m.date}: ${m.goals_for}-${m.goals_against} vs ${m.opponent}">${m.result}</div>`).join('')}</div>
         <div style="margin-top:12px; max-height:400px; overflow-y:auto;">
           ${data.matches.map((m, idx) => `
@@ -2543,7 +2545,7 @@ function buildSeasonHTML(team, season, data, gdChart, xgChart) {
               <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b7280;width:70px;flex-shrink:0">${m.date.slice(5)}</div>
               <div class="fm-result ${m.result}"></div>
               <div class="fm-venue">${m.venue === 'home' ? 'H' : 'A'}</div>
-              <div class="fm-opponent">${m.opponent}</div>
+              <div class="fm-opponent">${teamLogo(m.opponent, 16)} ${m.opponent}</div>
               <div class="fm-score">${m.goals_for}-${m.goals_against}</div>
               <div class="fm-xg">${m.xg_for !== undefined ? 'xG ' + m.xg_for + '-' + m.xg_against : ''}</div>
             </div>
@@ -2638,8 +2640,8 @@ async function loadTeamSeason() {
     }
     const data = await res.json();
 
-    const gdChart = buildGDChart(data.matches);
-    const xgChart = buildXGChart(data.matches);
+    const gdChart = buildGDChart(data.matches, team);
+    const xgChart = buildXGChart(data.matches, team);
 
     area.innerHTML = buildSeasonHTML(team, season, data, gdChart, xgChart);
     observeCards();
