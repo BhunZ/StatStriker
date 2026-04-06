@@ -149,6 +149,58 @@
   @keyframes spinBorder {
     to { transform: rotate(360deg); }
   }
+  @keyframes blobDrift1 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    25% { transform: translate(80px, 60px) scale(1.15); }
+    50% { transform: translate(-40px, 120px) scale(0.9); }
+    75% { transform: translate(60px, -30px) scale(1.05); }
+  }
+  @keyframes blobDrift2 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    25% { transform: translate(-70px, -50px) scale(1.1); }
+    50% { transform: translate(50px, -100px) scale(0.95); }
+    75% { transform: translate(-30px, 70px) scale(1.2); }
+  }
+  @keyframes blobDrift3 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(100px, -80px) scale(1.1); }
+    66% { transform: translate(-60px, 40px) scale(0.85); }
+  }
+
+  /* ── Animated Background ────────────────── */
+  .bg-blobs {
+    position: fixed; inset: 0; z-index: 0;
+    pointer-events: none; overflow: hidden;
+  }
+  .bg-blob {
+    position: absolute; border-radius: 50%;
+    filter: blur(100px); opacity: 0.12;
+    will-change: transform;
+  }
+  .bg-blob--green {
+    width: 600px; height: 600px; top: -10%; left: -5%;
+    background: radial-gradient(circle, #10b981, transparent 70%);
+    animation: blobDrift1 22s ease-in-out infinite;
+  }
+  .bg-blob--cyan {
+    width: 500px; height: 500px; top: 30%; right: -10%;
+    background: radial-gradient(circle, #06b6d4, transparent 70%);
+    animation: blobDrift2 25s ease-in-out infinite;
+  }
+  .bg-blob--purple {
+    width: 450px; height: 450px; bottom: -5%; left: 30%;
+    background: radial-gradient(circle, #a78bfa, transparent 70%);
+    animation: blobDrift3 30s ease-in-out infinite;
+  }
+  #particleCanvas {
+    position: fixed; inset: 0; z-index: 1;
+    pointer-events: none;
+  }
+  #main-content { position: relative; z-index: 2; }
+  @media (prefers-reduced-motion: reduce) {
+    .bg-blob { animation: none !important; }
+    #particleCanvas { display: none; }
+  }
 
   /* ── Skeleton Loaders ──────────────────────── */
   .skeleton {
@@ -649,28 +701,61 @@
     .hero::before { width: 100vw; }
     .footer-inner { flex-direction: column; gap: 8px; text-align: center; }
     .home-away-grid { grid-template-columns: 1fr; }
+    .bg-blob { opacity: 0.08; }
+    .bg-blob--green { width: 400px; height: 400px; }
+    .bg-blob--cyan { width: 350px; height: 350px; }
+    .bg-blob--purple { width: 300px; height: 300px; }
   }
   @media (max-width: 480px) {
     .container { padding: 0 16px; }
     nav { height: 56px; padding: 0 12px; }
     .nav-logo { font-size: 18px; }
+    .nav-left { gap: 16px; }
     .nav-links a { padding: 4px 6px; font-size: 10px; }
 
     .hero { padding: 48px 0 32px; }
     .hero h1 { font-size: 26px; }
     .hero-desc { font-size: 13px; }
+    .hero-stats-row { gap: 16px; flex-wrap: wrap; }
     .glass-card { padding: 16px; }
+
+    /* Match prediction */
     .team-name { font-size: 20px; min-width: auto; }
+    .team-name.home { justify-content: center; }
+    .match-header { gap: 8px; }
+    .team-picker { flex-direction: column; gap: 12px; }
+    .team-picker select { min-width: 0; width: 100%; }
+    .predict-btn { width: 100%; }
     .prob-pct { font-size: 16px; }
     .scoreline-chip { padding: 10px 14px; min-width: 60px; }
     .scoreline-chip .score { font-size: 18px; }
     .heatmap-grid { max-width: 100%; gap: 1px; }
     .hm-cell { min-height: 22px; font-size: 7px; }
-    .method-cards { grid-template-columns: 1fr; }
-    .match-header { gap: 8px; }
-    .team-picker select { min-width: 0; width: 100%; }
+    .model-table th, .model-table td { padding: 8px 6px; font-size: 11px; }
+
+    /* Recent form */
+    .form-match { gap: 8px; }
+    .fm-xg { display: none; }
     .form-badges { gap: 3px; }
+
+    /* Upcoming fixtures */
+    .upcoming-fixture { flex-wrap: wrap; gap: 8px; padding: 12px 0; }
+    .upcoming-left { width: auto; min-width: auto; flex-direction: row; gap: 8px; align-items: center; }
+    .upcoming-teams { width: 100%; }
+    .upcoming-team { width: auto; max-width: 140px; }
+    .upcoming-team:last-child { flex-direction: row; justify-content: flex-start; }
+    .upcoming-predict { width: 100%; text-align: center; }
+
+    /* About */
+    .method-cards { grid-template-columns: 1fr; }
     .match-meta { font-size: 11px; }
+
+    /* Animated background */
+    .bg-blob { opacity: 0.06; }
+    .bg-blob--green { width: 300px; height: 300px; }
+    .bg-blob--cyan { width: 250px; height: 250px; }
+    .bg-blob--purple { width: 200px; height: 200px; }
+    #particleCanvas { display: none; }
   }
   @media (max-width: 1024px) and (min-width: 769px) {
     .heatmap-grid { max-width: 400px !important; }
@@ -1283,6 +1368,14 @@
 </style>
 </head>
 <body>
+
+<!-- Animated Background -->
+<div class="bg-blobs" aria-hidden="true">
+  <div class="bg-blob bg-blob--green"></div>
+  <div class="bg-blob bg-blob--cyan"></div>
+  <div class="bg-blob bg-blob--purple"></div>
+</div>
+<canvas id="particleCanvas" aria-hidden="true"></canvas>
 
 <!-- Skip Navigation -->
 <a href="#predict" class="skip-nav">Skip to predictions</a>
@@ -2812,6 +2905,83 @@ function sharePrediction() {
 
 function showError(msg) { const e = document.getElementById('errorMsg'); e.textContent = msg; e.style.display = 'block'; }
 function hideError() { document.getElementById('errorMsg').style.display = 'none'; }
+
+/* ═══════════════════════════════════════════════
+   PARTICLE SYSTEM
+   ═══════════════════════════════════════════════ */
+(function initParticles() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const canvas = document.getElementById('particleCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let particles = [];
+  let animId = null;
+  let w, h;
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+
+  function createParticles() {
+    const count = w < 480 ? 0 : w < 768 ? 15 : 40;
+    particles = [];
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.3,
+        r: 0.5 + Math.random() * 2,
+        a: 0.15 + Math.random() * 0.35,
+        color: Math.random() < 0.6 ? '16,185,129' : '6,182,212',
+        phase: Math.random() * Math.PI * 2,
+        pulseSpeed: 0.005 + Math.random() * 0.01
+      });
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.phase += p.pulseSpeed;
+      if (p.x < -10) p.x = w + 10;
+      if (p.x > w + 10) p.x = -10;
+      if (p.y < -10) p.y = h + 10;
+      if (p.y > h + 10) p.y = -10;
+      const pulse = 0.7 + 0.3 * Math.sin(p.phase);
+      const alpha = p.a * pulse;
+      // Glow
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 3, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color},${alpha * 0.15})`;
+      ctx.fill();
+      // Core
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color},${alpha})`;
+      ctx.fill();
+    });
+    animId = requestAnimationFrame(draw);
+  }
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { resize(); createParticles(); }, 250);
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { cancelAnimationFrame(animId); animId = null; }
+    else if (!animId) draw();
+  });
+
+  resize();
+  createParticles();
+  if (particles.length > 0) draw();
+})();
 
 init();
 </script>
