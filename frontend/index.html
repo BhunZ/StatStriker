@@ -2043,6 +2043,15 @@ function renderMatch(pred) {
   document.getElementById('xgDisplay').textContent =
     pred.expected_goals.home + ' - ' + pred.expected_goals.away;
   document.getElementById('scoreDisplay').textContent = pred.most_likely_scoreline;
+
+  // Update Goal Distribution legend with team logos
+  const legend = document.querySelector('.goal-dist-legend');
+  if (legend) {
+    legend.innerHTML = `
+      <span style="display:inline-flex;align-items:center;gap:4px"><span class="dot-home">&#9679;</span> ${teamLogo(pred.home_team, 16)} Home</span>
+      <span style="display:inline-flex;align-items:center;gap:4px"><span class="dot-away">&#9679;</span> ${teamLogo(pred.away_team, 16)} Away</span>
+    `;
+  }
 }
 
 function renderConfidence(tiers) {
