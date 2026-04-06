@@ -17,6 +17,7 @@
     min-height: 100vh;
     line-height: 1.6;
     letter-spacing: -0.01em;
+    overflow-x: hidden;
   }
 
   /* ── Utility ───────────────────────────── */
@@ -701,7 +702,7 @@
     .hero::before { width: 100vw; }
     .footer-inner { flex-direction: column; gap: 8px; text-align: center; }
     .home-away-grid { grid-template-columns: 1fr; }
-    .bg-blob { opacity: 0.08; }
+    .bg-blob { opacity: 0.12; }
     .bg-blob--green { width: 400px; height: 400px; }
     .bg-blob--cyan { width: 350px; height: 350px; }
     .bg-blob--purple { width: 300px; height: 300px; }
@@ -738,20 +739,23 @@
     .fm-xg { display: none; }
     .form-badges { gap: 3px; }
 
-    /* Upcoming fixtures */
-    .upcoming-fixture { flex-wrap: wrap; gap: 8px; padding: 12px 0; }
-    .upcoming-left { width: auto; min-width: auto; flex-direction: row; gap: 8px; align-items: center; }
-    .upcoming-teams { width: 100%; }
-    .upcoming-team { width: auto; max-width: 140px; }
+    /* Upcoming fixtures — full vertical stack on mobile */
+    .upcoming-fixture { flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px 0; }
+    .upcoming-left { width: 100%; min-width: auto; flex-direction: row; gap: 8px; align-items: center; }
+    .upcoming-venue { order: -1; }
+    .upcoming-teams { width: 100%; justify-content: flex-start; gap: 8px; }
+    .upcoming-team { width: auto; }
     .upcoming-team:last-child { flex-direction: row; justify-content: flex-start; }
-    .upcoming-predict { width: 100%; text-align: center; }
+    .upcoming-vs { font-size: 9px; }
+    .upcoming-predict { width: 100%; text-align: center; padding: 8px; }
+    .upcoming-team-name { font-size: 11px; }
 
     /* About */
     .method-cards { grid-template-columns: 1fr; }
     .match-meta { font-size: 11px; }
 
     /* Animated background */
-    .bg-blob { opacity: 0.06; }
+    .bg-blob { opacity: 0.12; }
     .bg-blob--green { width: 300px; height: 300px; }
     .bg-blob--cyan { width: 250px; height: 250px; }
     .bg-blob--purple { width: 200px; height: 200px; }
