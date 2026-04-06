@@ -1061,7 +1061,6 @@
     font-size: 13px;
     color: #9ca3af;
     line-height: 1.6;
-    text-align: justify;
   }
   .tech-stack {
     display: flex;
@@ -1145,7 +1144,7 @@
   .developer-info { flex: 1; }
   .developer-info h3 { font-size: 22px; font-weight: 800; color: #f9fafb; margin-bottom: 4px; }
   .developer-info .developer-title { font-size: 13px; font-weight: 600; color: #10b981; margin-bottom: 12px; }
-  .developer-info .developer-bio { font-size: 13px; color: #9ca3af; line-height: 1.7; max-width: 520px; text-align: justify; }
+  .developer-info .developer-bio { font-size: 13px; color: #9ca3af; line-height: 1.7; max-width: 520px; }
   .developer-links { display: flex; gap: 12px; flex-shrink: 0; }
   .social-btn {
     display: inline-flex;
@@ -1423,7 +1422,7 @@
           <div class="heatmap-section">
             <div class="section-title">Scoreline Matrix</div>
             <div class="heatmap-wrapper">
-              <div class="heatmap-axis">Home goals &darr; &nbsp; Away goals &rarr;</div>
+              <div class="heatmap-axis" id="heatmapAxis">Home goals &darr; &nbsp; Away goals &rarr;</div>
               <div class="heatmap-grid" id="heatmap" role="grid" aria-label="Scoreline probability heatmap"></div>
             </div>
           </div>
@@ -1500,25 +1499,25 @@
         <div class="pipeline-step">
           <div class="step-icon">&#128375;</div>
           <div class="step-title">Web Scraping</div>
-          <div class="step-desc" style="text-align:justify">1,000+ matches across 3 seasons collected from FBRef & Understat via ScraperAPI + GitHub Actions</div>
+          <div class="step-desc">1,000+ matches across 3 seasons collected from FBRef & Understat via ScraperAPI + GitHub Actions</div>
         </div>
         <div class="pipeline-arrow">&#10132;</div>
         <div class="pipeline-step">
           <div class="step-icon">&#9881;</div>
           <div class="step-title">Data Processing</div>
-          <div class="step-desc" style="text-align:justify">10,000+ match events processed through entity resolution, normalization & 50+ engineered features</div>
+          <div class="step-desc">10,000+ match events processed through entity resolution, normalization & 50+ engineered features</div>
         </div>
         <div class="pipeline-arrow">&#10132;</div>
         <div class="pipeline-step">
           <div class="step-icon">&#129504;</div>
           <div class="step-title">Statistical Modeling</div>
-          <div class="step-desc" style="text-align:justify">5-tier ensemble approach that outperforms any individual model across temporal cross-validation</div>
+          <div class="step-desc">5-tier ensemble approach that outperforms any individual model across temporal cross-validation</div>
         </div>
         <div class="pipeline-arrow">&#10132;</div>
         <div class="pipeline-step">
           <div class="step-icon">&#127760;</div>
           <div class="step-title">Web Interface</div>
-          <div class="step-desc" style="text-align:justify">Sub-second inference via FastAPI with interactive visualizations and real-time analytics</div>
+          <div class="step-desc">Sub-second inference via FastAPI with interactive visualizations and real-time analytics</div>
         </div>
       </div>
     </div>
@@ -2043,6 +2042,12 @@ function renderMatch(pred) {
   document.getElementById('xgDisplay').textContent =
     pred.expected_goals.home + ' - ' + pred.expected_goals.away;
   document.getElementById('scoreDisplay').textContent = pred.most_likely_scoreline;
+
+  // Update Scoreline Matrix axis with team logos
+  const axis = document.getElementById('heatmapAxis');
+  if (axis) {
+    axis.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px">${teamLogo(pred.home_team, 16)} Home goals &darr;</span> &nbsp; <span style="display:inline-flex;align-items:center;gap:4px">${teamLogo(pred.away_team, 16)} Away goals &rarr;</span>`;
+  }
 
   // Update Goal Distribution legend with team logos
   const legend = document.querySelector('.goal-dist-legend');
