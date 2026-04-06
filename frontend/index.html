@@ -152,20 +152,30 @@
   }
   @keyframes blobDrift1 {
     0%, 100% { transform: translate(0, 0) scale(1); }
-    25% { transform: translate(80px, 60px) scale(1.15); }
-    50% { transform: translate(-40px, 120px) scale(0.9); }
-    75% { transform: translate(60px, -30px) scale(1.05); }
+    20% { transform: translate(120px, 80px) scale(1.2); }
+    40% { transform: translate(-60px, 180px) scale(0.85); }
+    60% { transform: translate(80px, -40px) scale(1.15); }
+    80% { transform: translate(-100px, 60px) scale(0.95); }
   }
   @keyframes blobDrift2 {
     0%, 100% { transform: translate(0, 0) scale(1); }
-    25% { transform: translate(-70px, -50px) scale(1.1); }
-    50% { transform: translate(50px, -100px) scale(0.95); }
-    75% { transform: translate(-30px, 70px) scale(1.2); }
+    25% { transform: translate(-100px, -80px) scale(1.15); }
+    50% { transform: translate(80px, -150px) scale(0.9); }
+    75% { transform: translate(-50px, 100px) scale(1.25); }
   }
   @keyframes blobDrift3 {
     0%, 100% { transform: translate(0, 0) scale(1); }
-    33% { transform: translate(100px, -80px) scale(1.1); }
-    66% { transform: translate(-60px, 40px) scale(0.85); }
+    30% { transform: translate(140px, -100px) scale(1.15); }
+    60% { transform: translate(-80px, 60px) scale(0.8); }
+    90% { transform: translate(40px, -40px) scale(1.1); }
+  }
+  @keyframes ringFloat {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    50% { transform: translate(30px, -40px) rotate(180deg); }
+  }
+  @keyframes ringFloat2 {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    50% { transform: translate(-40px, 30px) rotate(-180deg); }
   }
 
   /* ── Animated Background ────────────────── */
@@ -175,31 +185,67 @@
   }
   .bg-blob {
     position: absolute; border-radius: 50%;
-    filter: blur(100px); opacity: 0.12;
+    filter: blur(100px); opacity: 0.15;
     will-change: transform;
   }
   .bg-blob--green {
-    width: 600px; height: 600px; top: -10%; left: -5%;
-    background: radial-gradient(circle, #10b981, transparent 70%);
-    animation: blobDrift1 22s ease-in-out infinite;
+    width: 700px; height: 700px; top: -15%; left: -10%;
+    background: radial-gradient(circle, #10b981 0%, rgba(16,185,129,0.3) 40%, transparent 70%);
+    animation: blobDrift1 20s ease-in-out infinite;
   }
   .bg-blob--cyan {
-    width: 500px; height: 500px; top: 30%; right: -10%;
-    background: radial-gradient(circle, #06b6d4, transparent 70%);
-    animation: blobDrift2 25s ease-in-out infinite;
+    width: 600px; height: 600px; top: 25%; right: -15%;
+    background: radial-gradient(circle, #06b6d4 0%, rgba(6,182,212,0.3) 40%, transparent 70%);
+    animation: blobDrift2 24s ease-in-out infinite;
   }
   .bg-blob--purple {
-    width: 450px; height: 450px; bottom: -5%; left: 30%;
-    background: radial-gradient(circle, #a78bfa, transparent 70%);
-    animation: blobDrift3 30s ease-in-out infinite;
+    width: 550px; height: 550px; bottom: -10%; left: 25%;
+    background: radial-gradient(circle, #a78bfa 0%, rgba(167,139,250,0.3) 40%, transparent 70%);
+    animation: blobDrift3 28s ease-in-out infinite;
   }
+
+  /* Floating geometric rings */
+  .bg-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid;
+    opacity: 0.06;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .bg-ring--1 {
+    width: 200px; height: 200px; top: 15%; right: 20%;
+    border-color: #10b981;
+    animation: ringFloat 18s ease-in-out infinite;
+  }
+  .bg-ring--2 {
+    width: 140px; height: 140px; bottom: 25%; left: 10%;
+    border-color: #06b6d4;
+    animation: ringFloat2 22s ease-in-out infinite;
+  }
+  .bg-ring--3 {
+    width: 100px; height: 100px; top: 60%; right: 8%;
+    border-color: #a78bfa;
+    animation: ringFloat 15s ease-in-out infinite reverse;
+  }
+
+  /* Subtle grain overlay */
+  .bg-grain {
+    position: fixed; inset: 0; z-index: 0;
+    pointer-events: none;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+  }
+
   #particleCanvas {
     position: fixed; inset: 0; z-index: 1;
     pointer-events: none;
   }
   #main-content { position: relative; z-index: 2; }
   @media (prefers-reduced-motion: reduce) {
-    .bg-blob { animation: none !important; }
+    .bg-blob, .bg-ring { animation: none !important; }
     #particleCanvas { display: none; }
   }
 
@@ -706,6 +752,10 @@
     .bg-blob--green { width: 400px; height: 400px; }
     .bg-blob--cyan { width: 350px; height: 350px; }
     .bg-blob--purple { width: 300px; height: 300px; }
+    .bg-ring { opacity: 0.03; }
+    .bg-ring--1 { width: 350px; height: 350px; }
+    .bg-ring--2 { width: 280px; height: 280px; }
+    .bg-ring--3 { width: 220px; height: 220px; }
   }
   @media (max-width: 480px) {
     .container { padding: 0 16px; }
@@ -755,11 +805,12 @@
     .match-meta { font-size: 11px; }
 
     /* Animated background */
-    .bg-blob { opacity: 0.12; }
-    .bg-blob--green { width: 300px; height: 300px; }
-    .bg-blob--cyan { width: 250px; height: 250px; }
-    .bg-blob--purple { width: 200px; height: 200px; }
-    #particleCanvas { display: none; }
+    .bg-blob { opacity: 0.22; filter: blur(80px); }
+    .bg-blob--green { width: 350px; height: 350px; }
+    .bg-blob--cyan { width: 300px; height: 300px; }
+    .bg-blob--purple { width: 250px; height: 250px; }
+    .bg-ring { display: none; }
+    .bg-grain { opacity: 0.03; }
   }
   @media (max-width: 1024px) and (min-width: 769px) {
     .heatmap-grid { max-width: 400px !important; }
@@ -1378,7 +1429,11 @@
   <div class="bg-blob bg-blob--green"></div>
   <div class="bg-blob bg-blob--cyan"></div>
   <div class="bg-blob bg-blob--purple"></div>
+  <div class="bg-ring bg-ring--1"></div>
+  <div class="bg-ring bg-ring--2"></div>
+  <div class="bg-ring bg-ring--3"></div>
 </div>
+<div class="bg-grain" aria-hidden="true"></div>
 <canvas id="particleCanvas" aria-hidden="true"></canvas>
 
 <!-- Skip Navigation -->
@@ -2927,26 +2982,49 @@ function hideError() { document.getElementById('errorMsg').style.display = 'none
     h = canvas.height = window.innerHeight;
   }
 
+  const CONNECTION_DIST = 150;
+
   function createParticles() {
-    const count = w < 480 ? 0 : w < 768 ? 15 : 40;
+    const count = w < 480 ? 15 : w < 768 ? 20 : 50;
     particles = [];
+    const colors = ['16,185,129', '6,182,212', '167,139,250'];
     for (let i = 0; i < count; i++) {
       particles.push({
         x: Math.random() * w,
         y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: (Math.random() - 0.5) * 0.3,
-        r: 0.5 + Math.random() * 2,
-        a: 0.15 + Math.random() * 0.35,
-        color: Math.random() < 0.6 ? '16,185,129' : '6,182,212',
+        vx: (Math.random() - 0.5) * 0.35,
+        vy: (Math.random() - 0.5) * 0.25,
+        r: 0.8 + Math.random() * 2,
+        a: 0.2 + Math.random() * 0.4,
+        color: colors[Math.floor(Math.random() * colors.length)],
         phase: Math.random() * Math.PI * 2,
-        pulseSpeed: 0.005 + Math.random() * 0.01
+        pulseSpeed: 0.008 + Math.random() * 0.012
       });
     }
   }
 
   function draw() {
     ctx.clearRect(0, 0, w, h);
+
+    // Draw connection lines between nearby particles
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < CONNECTION_DIST) {
+          const lineAlpha = (1 - dist / CONNECTION_DIST) * 0.08;
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(16,185,129,${lineAlpha})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw particles
     particles.forEach(p => {
       p.x += p.vx;
       p.y += p.vy;
@@ -2957,10 +3035,15 @@ function hideError() { document.getElementById('errorMsg').style.display = 'none
       if (p.y > h + 10) p.y = -10;
       const pulse = 0.7 + 0.3 * Math.sin(p.phase);
       const alpha = p.a * pulse;
-      // Glow
+      // Outer glow
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.r * 3, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${p.color},${alpha * 0.15})`;
+      ctx.arc(p.x, p.y, p.r * 4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color},${alpha * 0.08})`;
+      ctx.fill();
+      // Inner glow
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.color},${alpha * 0.2})`;
       ctx.fill();
       // Core
       ctx.beginPath();
