@@ -170,11 +170,17 @@ class BaseScraper(ABC):
                     timeout=self._timeout,
                 )
 
-                # ScraperAPI returns 403 when API credits are exhausted
-                if response.status_code == 403 and not self._using_fallback:
+                # ScraperAPI returns 403 when credits are exhausted, or 500 on
+                # premium-plan access failures. Switch to fallback key on either.
+                if (
+                    response.status_code in (403, 500)
+                    and not self._using_fallback
+                    and self._fallback_key
+                ):
                     logger.warning(
-                        "ScraperAPI primary key exhausted (HTTP 403) — "
-                        "switching to secondary key for %s", url,
+                        "ScraperAPI primary key failed with HTTP %d — "
+                        "switching to secondary key for %s",
+                        response.status_code, url,
                     )
                     self._using_fallback = True
                     scraper_url = self._build_scraper_url(url, render_js=render_js, premium=premium)

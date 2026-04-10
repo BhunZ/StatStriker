@@ -32,6 +32,7 @@ jobs:
       - name: Run pipeline (auto mode)
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
+          SCRAPER_API_KEY_SECONDARY: ${{ secrets.SCRAPER_API_KEY_SECONDARY }}
         run: |
           set +e
           python main.py --auto
