@@ -446,19 +446,12 @@ class FBRefScraper(BaseScraper):
 
         logger.info("Fetching FBRef %s stats for season %s ...", stat_type, season)
 
-        # FBRef aggressively blocks datacenter IPs on stats sub-pages (HTTP 500).
-        # Rotate to a fresh session, sleep 6s, and route through ScraperAPI's
-        # residential proxy pool (premium=True) to bypass the block.
-        # Residential proxies are slower — temporarily raise timeout to 120s.
+        # Rotate to a fresh session and pause briefly between stat pages so
+        # ScraperAPI's standard pool gets a clean IP for each request.
         self._session = requests.Session()
-        saved_timeout = self._timeout
-        self._timeout = 120
         _time.sleep(6.0)
 
-        try:
-            response = self._get(url, render_js=False, premium=True)
-        finally:
-            self._timeout = saved_timeout
+        response = self._get(url, render_js=False)
         html = response.text
 
         # Strategy 1: known table ID
