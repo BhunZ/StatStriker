@@ -181,7 +181,7 @@ class FBRefScraper(BaseScraper):
 
     def __init__(
         self,
-        api_key: str = SCRAPER_API_KEY_SECONDARY,
+        api_key: str = SCRAPER_API_KEY,
         seasons: list[str] | None = None,
         save_raw: bool = True,
     ) -> None:
