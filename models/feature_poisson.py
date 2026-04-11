@@ -5,13 +5,35 @@ Tier 4: Feature-augmented Poisson GLM with team effects.
 
 Extends Tier 1 by adding rolling form features (PPDA, xG, xG
 overperformance) and team context (prior-season stats) as log-linear
-covariates:
+covariates. Since v2.0 the model uses ASYMMETRIC weights — each side
+of the match gets its own independent weight vector:
 
-    log(lambda_home) = mu + alpha_i - beta_j + gamma + sum_k(w_k * x_k_home)
-    log(lambda_away) = mu + alpha_j - beta_i         + sum_k(w_k * x_k_away)
+    log(lambda_home) = mu + alpha_i - beta_j + gamma + x_home @ w_home
+    log(lambda_away) = mu + alpha_j - beta_i         + x_away @ w_away
 
-L2 regularization is applied ONLY to the feature weights w_k, not to
-team parameters — those are structural and must be free.
+Before v2.0, ``w_home`` and ``w_away`` were tied to the same vector
+(``X_home = X_away = X``), which forced every feature weight to act
+symmetrically on the total match goals. The refactor lets the GLM
+learn that e.g. ``ctx_keepers_save`` on the HOME side should suppress
+AWAY goals — a signal the symmetric model simply could not express.
+
+L2 regularization is applied ONLY to the feature weights (both
+``w_home`` and ``w_away``), not to team parameters — those are
+structural and must be free.
+
+Symmetric mode (production default since 2026-04-11)
+----------------------------------------------------
+The NLL still learns independent ``w_home`` / ``w_away`` vectors (the
+parameter space is unchanged), but when ``symmetric_mode=True`` the two
+vectors are averaged element-wise post-fit so the model behaves
+symmetrically at inference. This is a temporary measure: a walk-forward
+A/B backtest showed the fully asymmetric architecture regressed on
+log-loss (+0.33 vs symmetric) because of a pre-existing calibration bug
+further downstream (overconfident 1X2 tails amplified by the evaluator's
+eps=1e-15 clamp). Keeping the flag means the full v2 architecture can be
+re-enabled instantly via ``FeaturePoisson(symmetric_mode=False)`` once
+the calibration fix lands. See the Task 3b section of
+``plans/piped-greeting-pretzel.md`` for details.
 
 References
 ----------
@@ -39,17 +61,31 @@ logger = logging.getLogger(__name__)
 _CONSTRAINT_WEIGHT: float = 50.0
 
 
+#: Architecture version marker. Bump whenever the fitted-state shape changes
+#: so ``app/predict.py`` can refuse stale pickles instead of crashing at
+#: inference time. v1 = symmetric (w_home = w_away); v2 = asymmetric.
+FP_ARCHITECTURE_VERSION: int = 2
+
+
 class FeaturePoisson(BaseMatchModel):
     """
     Feature-augmented Poisson GLM with team-specific attack/defense
-    parameters and covariate weights with L2 regularization.
+    parameters and asymmetric covariate weights with L2 regularization.
 
     Parameters
     ----------
     feature_cols : list[str] or None
-        Feature column names from the DataFrame. Defaults to ``FP_FEATURE_COLS``.
+        Feature STEMS (without the ``home_``/``away_`` prefix). At fit
+        time, ``_prepare_features`` resolves each stem to two columns.
+        Defaults to ``FP_FEATURE_COLS``.
     l2_penalty : float or None
         L2 penalty strength on feature weights. If None, grid-searched.
+    symmetric_mode : bool, default True
+        Production default. When True, ``w_home`` and ``w_away`` are
+        averaged element-wise after the optimizer converges so the
+        fitted model behaves symmetrically (matches the pre-v2.0
+        bottleneck). Set False to preserve the full asymmetric weights
+        for experimental work. See the module docstring.
     half_life_years : float
         Time decay half-life.
     """
@@ -58,12 +94,17 @@ class FeaturePoisson(BaseMatchModel):
         self,
         feature_cols: list[str] | None = None,
         l2_penalty: float | None = None,
+        symmetric_mode: bool = True,
         half_life_years: float = 1.5,
         max_goals: int = DC_MAX_GOALS,
     ) -> None:
         super().__init__(name="feature_poisson", max_goals=max_goals)
-        self._feature_cols = feature_cols or FP_FEATURE_COLS
+        # Stems only (no ``home_``/``away_`` prefix). Old callers that pass
+        # a fully-prefixed pair list are auto-collapsed to stems below so
+        # the A/B backtest harness can still supply FP_FEATURE_COLS_V1_PAIRS.
+        self._feature_cols = self._coerce_to_stems(feature_cols or FP_FEATURE_COLS)
         self._l2_penalty = l2_penalty
+        self._symmetric_mode = symmetric_mode
         self._half_life = half_life_years
 
         # Fitted state
@@ -73,11 +114,55 @@ class FeaturePoisson(BaseMatchModel):
         self.home_adv_: float = 0.0
         self.rho_: float = 0.0
         self.intercept_: float = 0.0
+        # Asymmetric weight vectors (v2.0). Each has length == n_stems.
+        self.feature_weights_home_: np.ndarray = np.array([])
+        self.feature_weights_away_: np.ndarray = np.array([])
+        # Back-compat alias: [w_home_0 ... w_home_k, w_away_0 ... w_away_k]
+        # so ``feature_importance()`` and legacy tooling still work.
         self.feature_weights_: np.ndarray = np.array([])
-        self.feature_cols_used_: list[str] = []
+        self.feature_cols_used_: list[str] = []       # full 2*k names
+        self.feature_cols_used_stems_: list[str] = []  # k stems
+        # Pooled scaler (same mean/std applied to home and away matrices).
         self.feature_mean_: np.ndarray = np.array([])
         self.feature_std_: np.ndarray = np.array([])
         self.l2_used_: float = 0.0
+        # Architecture version — pickled alongside the model so the loader
+        # in app/predict.py can detect and refuse stale v1 pickles.
+        self.fp_version_: int = FP_ARCHITECTURE_VERSION
+        # Whether w_home and w_away were averaged post-fit. Pickled so
+        # the loader can distinguish a symmetric-mode v2 pickle from a
+        # fully asymmetric v2 pickle without inspecting weight arrays.
+        self.symmetric_mode_: bool = symmetric_mode
+
+    # ------------------------------------------------------------------
+    # Stem coercion helper
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _coerce_to_stems(cols: list[str]) -> list[str]:
+        """
+        Accept either a stem list or a fully-prefixed pair list and return
+        a deduplicated stem list preserving first-seen order.
+
+        Pair lists are collapsed by stripping the ``home_`` prefix and
+        dropping any ``away_...`` entry whose stem was already added via
+        its ``home_...`` partner. This lets legacy callers (including the
+        A/B backtest harness passing ``FP_FEATURE_COLS_V1_PAIRS``) work
+        without modification.
+        """
+        stems: list[str] = []
+        seen: set[str] = set()
+        for c in cols:
+            if c.startswith("home_"):
+                stem = c[len("home_"):]
+            elif c.startswith("away_"):
+                stem = c[len("away_"):]
+            else:
+                stem = c
+            if stem not in seen:
+                seen.add(stem)
+                stems.append(stem)
+        return stems
 
     # ------------------------------------------------------------------
     # Feature preparation
@@ -85,32 +170,74 @@ class FeaturePoisson(BaseMatchModel):
 
     def _prepare_features(
         self, df: pd.DataFrame, fit_scaler: bool = False
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Extract and standardize feature matrix.
+        Extract and standardize the asymmetric feature matrices.
 
-        Returns (n_matches, n_features) array. NaN imputed with 0 after
+        For each stem ``s`` in ``self._feature_cols``, resolves both
+        ``home_{s}`` and ``away_{s}`` columns from ``df``. Returns
+        ``(X_home, X_away)`` both shaped ``(n_matches, n_stems)``.
+
+        Only stems where BOTH the home and away column exist in ``df``
+        are kept — this way the per-stem weight vectors stay aligned.
+
+        When ``fit_scaler=True``, a pooled mean/std is computed per stem
+        from the stacked home+away column so the two weight vectors
+        operate on the same scale. NaN values become 0 after
         standardization (= league average).
         """
-        # Only use columns that exist in df
-        available = [c for c in self._feature_cols if c in df.columns]
-        if not available:
-            logger.warning("No feature columns found in DataFrame")
-            return np.zeros((len(df), 0))
+        home_cols: list[str] = []
+        away_cols: list[str] = []
+        stems_used: list[str] = []
+        missing: list[str] = []
 
-        self.feature_cols_used_ = available
-        X = df[available].values.astype(float)
+        for stem in self._feature_cols:
+            h = f"home_{stem}"
+            a = f"away_{stem}"
+            if h in df.columns and a in df.columns:
+                home_cols.append(h)
+                away_cols.append(a)
+                stems_used.append(stem)
+            else:
+                missing.append(stem)
 
+        if missing:
+            logger.debug(
+                "FeaturePoisson: %d stems missing from DataFrame and "
+                "skipped: %s", len(missing), missing,
+            )
+
+        if not stems_used:
+            logger.warning("No feature stems resolved from DataFrame")
+            self.feature_cols_used_ = []
+            self.feature_cols_used_stems_ = []
+            return np.zeros((len(df), 0)), np.zeros((len(df), 0))
+
+        self.feature_cols_used_stems_ = stems_used
+        self.feature_cols_used_ = home_cols + away_cols
+
+        X_home = df[home_cols].values.astype(float)
+        X_away = df[away_cols].values.astype(float)
+
+        # Pooled scaler: mean and std computed from the stacked home+away
+        # values for each stem. A team's rolling xG looks the same whether
+        # they're the home or the away side of a match, so pooling doubles
+        # the sample size and prevents drift between the two weight vectors.
         if fit_scaler:
-            all_nan = np.all(np.isnan(X), axis=0)
+            stacked = np.concatenate([X_home, X_away], axis=0)
+            all_nan = np.all(np.isnan(stacked), axis=0)
             with np.errstate(all="ignore"):
-                self.feature_mean_ = np.where(all_nan, 0.0, np.nanmean(X, axis=0))
-                std = np.where(all_nan, 1.0, np.nanstd(X, axis=0))
+                self.feature_mean_ = np.where(
+                    all_nan, 0.0, np.nanmean(stacked, axis=0)
+                )
+                std = np.where(all_nan, 1.0, np.nanstd(stacked, axis=0))
             self.feature_std_ = np.where(std < 1e-8, 1.0, std)
 
-        X = (X - self.feature_mean_) / self.feature_std_
-        X = np.nan_to_num(X, nan=0.0)  # NaN -> league average
-        return X
+        X_home = (X_home - self.feature_mean_) / self.feature_std_
+        X_away = (X_away - self.feature_mean_) / self.feature_std_
+        X_home = np.nan_to_num(X_home, nan=0.0)
+        X_away = np.nan_to_num(X_away, nan=0.0)
+        return X_home, X_away
 
     # ------------------------------------------------------------------
     # Negative log-likelihood
@@ -131,28 +258,31 @@ class FeaturePoisson(BaseMatchModel):
         l2_penalty: float,
     ) -> float:
         """
-        Parameter vector:
-        [mu, log(alpha_0..n-1), log(beta_0..n-1), gamma, rho, w_0..w_p-1]
-        Total: 2*n_teams + 3 + n_features
+        Parameter vector (v2.0 asymmetric):
+        [mu, log(alpha_0..n-1), log(beta_0..n-1), gamma, rho,
+         w_home_0..w_home_{k-1}, w_away_0..w_away_{k-1}]
+        Total: 2*n_teams + 3 + 2*n_features
         """
         mu = params[0]
         log_alpha = params[1 : n_teams + 1]
         log_beta = params[n_teams + 1 : 2 * n_teams + 1]
         gamma = params[2 * n_teams + 1]
         rho = params[2 * n_teams + 2]
-        w = params[2 * n_teams + 3:]
+        w_start = 2 * n_teams + 3
+        w_home = params[w_start : w_start + n_features]
+        w_away = params[w_start + n_features : w_start + 2 * n_features]
 
         alpha = np.exp(log_alpha)
-        beta = np.exp(log_beta)
 
-        # Log-linear model for expected goals
+        # Log-linear model for expected goals — each side uses its own
+        # learned weight vector.
         log_lam_h = (
             mu + log_alpha[home_idx] - log_beta[away_idx] + gamma
-            + X_home @ w
+            + X_home @ w_home
         )
         log_lam_a = (
             mu + log_alpha[away_idx] - log_beta[home_idx]
-            + X_away @ w
+            + X_away @ w_away
         )
 
         lam_h = np.exp(np.clip(log_lam_h, -10, 5))
@@ -181,8 +311,8 @@ class FeaturePoisson(BaseMatchModel):
 
         nll = -np.sum(weights * log_lik)
 
-        # L2 penalty on feature weights ONLY
-        nll += l2_penalty * np.sum(w ** 2)
+        # L2 penalty on BOTH feature weight vectors (team params stay free)
+        nll += l2_penalty * (np.sum(w_home ** 2) + np.sum(w_away ** 2))
 
         # Sum-to-one constraint
         nll += _CONSTRAINT_WEIGHT * (np.sum(alpha) - n_teams) ** 2
@@ -210,14 +340,9 @@ class FeaturePoisson(BaseMatchModel):
         ref_date = pd.to_datetime(df["date"]).max()
         weights = self._time_weights(df["date"], ref_date, self._half_life)
 
-        # Prepare features
-        X = self._prepare_features(df, fit_scaler=True)
-        n_features = X.shape[1]
-
-        # Split features for home and away observations
-        # Home features are used for home lambda, away features for away lambda
-        X_home = X
-        X_away = X
+        # Prepare asymmetric features (pooled scaler, one matrix per side)
+        X_home, X_away = self._prepare_features(df, fit_scaler=True)
+        n_features = X_home.shape[1]  # == n_stems, not 2*n_stems
 
         # Determine L2 penalty
         if self._l2_penalty is not None:
@@ -230,24 +355,26 @@ class FeaturePoisson(BaseMatchModel):
         self.l2_used_ = l2
 
         logger.info(
-            "Fitting Feature Poisson on %d matches, %d features, L2=%.4f ...",
-            len(df), n_features, l2,
+            "Fitting Feature Poisson v%d on %d matches, %d stems "
+            "(%d total weights), L2=%.4f ...",
+            FP_ARCHITECTURE_VERSION, len(df), n_features,
+            2 * n_features, l2,
         )
 
-        # Initial parameters
-        n_params = 2 * n_teams + 3 + n_features
+        # Initial parameters — v2.0 has 2*n_features weights (home + away)
+        n_params = 2 * n_teams + 3 + 2 * n_features
         x0 = np.zeros(n_params)
         x0[0] = np.log(1.5)  # mu (intercept)
         x0[2 * n_teams + 1] = 0.25  # gamma (home advantage)
         x0[2 * n_teams + 2] = DC_INITIAL_RHO
 
         bounds = (
-            [(None, None)]                     # mu
-            + [(None, None)] * n_teams         # log(alpha)
-            + [(None, None)] * n_teams         # log(beta)
-            + [(None, None)]                   # gamma
-            + [(-0.5, 0.5)]                    # rho
-            + [(None, None)] * n_features      # w
+            [(None, None)]                         # mu
+            + [(None, None)] * n_teams             # log(alpha)
+            + [(None, None)] * n_teams             # log(beta)
+            + [(None, None)]                       # gamma
+            + [(-0.5, 0.5)]                        # rho
+            + [(None, None)] * (2 * n_features)    # w_home || w_away
         )
 
         result = minimize(
@@ -274,13 +401,46 @@ class FeaturePoisson(BaseMatchModel):
         self.defense_ = {t: float(beta[i]) for i, t in enumerate(teams)}
         self.home_adv_ = float(p[2 * n_teams + 1])
         self.rho_ = float(p[2 * n_teams + 2])
-        self.feature_weights_ = p[2 * n_teams + 3:]
+
+        w_start = 2 * n_teams + 3
+        self.feature_weights_home_ = p[w_start : w_start + n_features].copy()
+        self.feature_weights_away_ = p[w_start + n_features : w_start + 2 * n_features].copy()
+        # Back-compat concatenation so feature_importance() and any
+        # external inspector keep working — [home weights || away weights].
+        self.feature_weights_ = np.concatenate(
+            [self.feature_weights_home_, self.feature_weights_away_]
+        )
+
+        # Post-fit symmetrization (production default since 2026-04-11).
+        # Average w_home and w_away element-wise so the model behaves
+        # symmetrically at inference. Matches the reference pattern in
+        # scripts/ab_backtest_fp_v1_vs_v2.py::FeaturePoissonV1Symmetric
+        # bit-for-bit, so the walk-forward A/B baseline (LL=4.2945) is
+        # reproduced exactly. Set symmetric_mode=False to keep the full
+        # asymmetric weights for experimentation.
+        if self._symmetric_mode:
+            shared = 0.5 * (
+                self.feature_weights_home_ + self.feature_weights_away_
+            )
+            self.feature_weights_home_ = shared.copy()
+            self.feature_weights_away_ = shared.copy()
+            self.feature_weights_ = np.concatenate([shared, shared])
+            logger.info(
+                "Feature Poisson: symmetric_mode=True — averaged "
+                "w_home/w_away post-fit (||w|| = %.3f)",
+                float(np.linalg.norm(shared)),
+            )
+        self.symmetric_mode_ = self._symmetric_mode
+        self.fp_version_ = FP_ARCHITECTURE_VERSION
         self._fitted = True
 
         logger.info(
-            "Feature Poisson fitted: %d teams, %d features, gamma=%.3f, "
+            "Feature Poisson v%d fitted: %d teams, %d stems "
+            "(%d total weights), symmetric=%s, gamma=%.3f, "
             "rho=%.4f, L2=%.4f",
-            len(teams), n_features, self.home_adv_, self.rho_, l2,
+            FP_ARCHITECTURE_VERSION, len(teams), n_features,
+            2 * n_features, self._symmetric_mode, self.home_adv_,
+            self.rho_, l2,
         )
         return self
 
@@ -350,14 +510,46 @@ class FeaturePoisson(BaseMatchModel):
             - np.log(max(beta_h, 1e-10))
         )
 
-        # If features are provided via kwargs, apply them
-        features = kwargs.get("features")
-        if features is not None and len(self.feature_weights_) > 0:
-            f = (np.array(features) - self.feature_mean_) / self.feature_std_
-            f = np.nan_to_num(f, nan=0.0)
-            contribution = f @ self.feature_weights_
-            log_lam_h += contribution
-            log_lam_a += contribution
+        # v2.0: accept per-side feature vectors. Each side is standardized
+        # with the SAME pooled scaler (self.feature_mean_ / self.feature_std_)
+        # and then multiplied by its own learned weight vector.
+        features_home = kwargs.get("features_home")
+        features_away = kwargs.get("features_away")
+
+        # Legacy path: ``features`` kwarg used to apply symmetrically.
+        # Warn once and treat it as both sides for mid-refactor compatibility.
+        legacy_features = kwargs.get("features")
+        if legacy_features is not None and (
+            features_home is None and features_away is None
+        ):
+            logger.warning(
+                "FeaturePoisson.predict_scoreline_probs received the "
+                "legacy 'features' kwarg — v2.0 expects 'features_home' "
+                "and 'features_away'. Applying symmetrically as a "
+                "fallback; please update the caller."
+            )
+            features_home = legacy_features
+            features_away = legacy_features
+
+        if (
+            features_home is not None
+            and len(self.feature_weights_home_) > 0
+        ):
+            f_h = (
+                np.asarray(features_home, dtype=float) - self.feature_mean_
+            ) / self.feature_std_
+            f_h = np.nan_to_num(f_h, nan=0.0)
+            log_lam_h += float(f_h @ self.feature_weights_home_)
+
+        if (
+            features_away is not None
+            and len(self.feature_weights_away_) > 0
+        ):
+            f_a = (
+                np.asarray(features_away, dtype=float) - self.feature_mean_
+            ) / self.feature_std_
+            f_a = np.nan_to_num(f_a, nan=0.0)
+            log_lam_a += float(f_a @ self.feature_weights_away_)
 
         lam_h = np.exp(np.clip(log_lam_h, -10, 5))
         lam_a = np.exp(np.clip(log_lam_a, -10, 5))
@@ -381,19 +573,83 @@ class FeaturePoisson(BaseMatchModel):
         return mat
 
     # ------------------------------------------------------------------
+    # Batch prediction (override — pipes per-match features to each side)
+    # ------------------------------------------------------------------
+
+    def predict_batch(
+        self, fixtures: pd.DataFrame, **kwargs
+    ) -> pd.DataFrame:
+        """
+        Override ``BaseMatchModel.predict_batch`` so Feature Poisson
+        predictions actually USE their learned feature weights at
+        inference time.
+
+        The base implementation calls ``predict_scoreline_probs(home, away)``
+        with no features kwargs, which would silently zero out the
+        feature contribution and make v2 predictions identical to a
+        pure Dixon-Coles model. Here we standardize the per-side
+        feature matrices from the fixtures DataFrame (with ``fit_scaler=False``
+        so the pooled scaler from training is reused) and pass row ``i``
+        to each call.
+
+        The output schema mirrors ``BaseMatchModel.predict_batch`` exactly:
+        every original fixtures column plus ``p_home`` / ``p_draw`` / ``p_away``.
+        """
+        # If no stems resolved (e.g. caller passes a goals-only DataFrame
+        # without feature columns), gracefully fall back to the base
+        # implementation which skips feature contribution entirely.
+        have_features = bool(self.feature_cols_used_stems_)
+        if have_features:
+            X_home, X_away = self._prepare_features(fixtures, fit_scaler=False)
+
+        results: list[dict[str, float]] = []
+        for i, (_, row) in enumerate(fixtures.iterrows()):
+            call_kwargs = dict(kwargs)
+            if have_features:
+                call_kwargs["features_home"] = X_home[i]
+                call_kwargs["features_away"] = X_away[i]
+            probs = self.predict_1x2(
+                row["home_team"], row["away_team"], **call_kwargs
+            )
+            results.append(probs)
+
+        out = fixtures.copy()
+        probs_df = pd.DataFrame(results)
+        out["p_home"] = probs_df["home"].values
+        out["p_draw"] = probs_df["draw"].values
+        out["p_away"] = probs_df["away"].values
+        return out
+
+    # ------------------------------------------------------------------
     # Feature importance
     # ------------------------------------------------------------------
 
     def feature_importance(self) -> pd.DataFrame:
-        """Return feature names and weights sorted by absolute magnitude."""
+        """
+        Return feature names and weights sorted by absolute magnitude.
+
+        With v2.0 each stem has TWO weights (one for the home side, one
+        for the away side), so the output contains ``2 * n_stems`` rows.
+        A ``side`` column disambiguates which weight vector each row
+        comes from.
+        """
+        if not self.feature_cols_used_stems_:
+            return pd.DataFrame(columns=["feature", "side", "stem", "weight", "abs_weight"])
+
+        stems = self.feature_cols_used_stems_
+        rows = []
+        for stem, w in zip(stems, self.feature_weights_home_):
+            rows.append(
+                {"feature": f"home_{stem}", "side": "home", "stem": stem,
+                 "weight": float(w), "abs_weight": float(abs(w))}
+            )
+        for stem, w in zip(stems, self.feature_weights_away_):
+            rows.append(
+                {"feature": f"away_{stem}", "side": "away", "stem": stem,
+                 "weight": float(w), "abs_weight": float(abs(w))}
+            )
         return (
-            pd.DataFrame({
-                "feature": self.feature_cols_used_,
-                "weight": self.feature_weights_[:len(self.feature_cols_used_)],
-                "abs_weight": np.abs(
-                    self.feature_weights_[:len(self.feature_cols_used_)]
-                ),
-            })
+            pd.DataFrame(rows)
             .sort_values("abs_weight", ascending=False)
             .reset_index(drop=True)
         )

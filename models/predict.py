@@ -10,6 +10,7 @@ web interface (Phase 3).
 
 import logging
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -24,12 +25,15 @@ from .evaluation import ModelEvaluator
 
 logger = logging.getLogger(__name__)
 
-# Tier number -> model class factory
-_TIER_FACTORIES: dict[int, type] = {
+# Tier number -> model factory (zero-arg callable returning a fitted-ready model).
+# Tier 4 uses symmetric_mode=True as the production default since 2026-04-11
+# pending the log-loss calibration fix tracked in Task 3b of
+# plans/piped-greeting-pretzel.md. Pass symmetric_mode=False for experiments.
+_TIER_FACTORIES: dict[int, Callable[[], BaseMatchModel]] = {
     1: DixonColesModel,
     2: BivariatePoisson,
     3: XGDixonColes,
-    4: FeaturePoisson,
+    4: lambda: FeaturePoisson(symmetric_mode=True),
 }
 
 
@@ -90,7 +94,7 @@ class MatchPredictor:
             DixonColesModel(half_life_years=1.5),
             BivariatePoisson(half_life_years=1.5),
             XGDixonColes(half_life_years=1.5),
-            FeaturePoisson(half_life_years=1.5),
+            FeaturePoisson(half_life_years=1.5, symmetric_mode=True),
         ]
         ensemble = EnsembleModel(base_models=base_models)
         ensemble.fit(self._df)
@@ -219,11 +223,42 @@ class MatchPredictor:
 
     @classmethod
     def load_models(cls, directory: Path, df: pd.DataFrame) -> "MatchPredictor":
-        """Load all saved models from disk."""
+        """
+        Load all saved models from disk.
+
+        As of v2.0 the FeaturePoisson model has an asymmetric weight
+        architecture (``feature_weights_home_`` / ``feature_weights_away_``).
+        Pickles trained before the refactor are missing those attributes
+        and would crash at inference time. We detect them via
+        ``fp_version_`` and skip the stale file — downstream callers
+        (the API) will then see a predictor with no ``feature_poisson``
+        key and fall back to the remaining tiers / ensemble without
+        500-ing.
+
+        Symmetric-mode v2 pickles (w_home == w_away, averaged post-fit)
+        are fully accepted; the version check only rejects pickles
+        strictly older than v2.
+        """
+        from .feature_poisson import FP_ARCHITECTURE_VERSION
+
         predictor = cls(df)
         directory = Path(directory)
         for pkl_file in sorted(directory.glob("*.pkl")):
             model = BaseMatchModel.load(pkl_file)
+            # Version guard for FeaturePoisson pickles
+            if isinstance(model, FeaturePoisson):
+                fp_version = getattr(model, "fp_version_", 1)
+                symmetric_mode = getattr(model, "symmetric_mode_", False)
+                if fp_version < FP_ARCHITECTURE_VERSION and not symmetric_mode:
+                    logger.warning(
+                        "Stale FeaturePoisson v%d pickle at %s — v%d is "
+                        "required (or symmetric_mode=True on a v%d pickle). "
+                        "Skipping; please retrain with "
+                        "`python main.py --force-train`.",
+                        fp_version, pkl_file, FP_ARCHITECTURE_VERSION,
+                        FP_ARCHITECTURE_VERSION,
+                    )
+                    continue
             predictor._models[model.name] = model
         logger.info("Loaded %d models from %s", len(predictor._models), directory)
         return predictor
