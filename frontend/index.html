@@ -1244,6 +1244,123 @@
   }
   .data-sources span { font-weight: 600; color: #d1d5db; }
 
+  /* ── Version History Timeline ─────────── */
+  .version-rail {
+    position: relative;
+    padding-left: 36px;
+    margin-top: 20px;
+  }
+  .version-rail::before {
+    content: "";
+    position: absolute;
+    left: 11px; top: 10px; bottom: 10px;
+    width: 2px;
+    background: linear-gradient(
+      180deg,
+      rgba(16, 185, 129, 0.65) 0%,
+      rgba(16, 185, 129, 0.20) 60%,
+      rgba(16, 185, 129, 0.05) 100%
+    );
+  }
+  .version-entry {
+    position: relative;
+    padding-bottom: 28px;
+  }
+  .version-entry:last-child { padding-bottom: 0; }
+  .version-node {
+    position: absolute;
+    left: -30px; top: 14px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: rgba(75, 85, 99, 0.9);
+    border: 2px solid rgba(17, 24, 39, 0.95);
+    box-shadow: 0 0 0 2px rgba(75, 85, 99, 0.35);
+  }
+  .version-entry.is-current .version-node {
+    background: #10b981;
+    box-shadow:
+      0 0 0 3px rgba(16, 185, 129, 0.30),
+      0 0 18px rgba(16, 185, 129, 0.55);
+    animation: versionPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes versionPulse {
+    0%, 100% {
+      box-shadow:
+        0 0 0 3px rgba(16, 185, 129, 0.28),
+        0 0 12px rgba(16, 185, 129, 0.40);
+    }
+    50% {
+      box-shadow:
+        0 0 0 5px rgba(16, 185, 129, 0.38),
+        0 0 24px rgba(16, 185, 129, 0.75);
+    }
+  }
+  .version-card {
+    background: rgba(17, 24, 39, 0.55);
+    border: 1px solid rgba(75, 85, 99, 0.35);
+    border-radius: 14px;
+    padding: 16px 18px;
+    backdrop-filter: blur(8px);
+    transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+  }
+  .version-card:hover {
+    border-color: rgba(16, 185, 129, 0.25);
+    transform: translateY(-2px);
+  }
+  .version-entry.is-current .version-card {
+    border-color: rgba(16, 185, 129, 0.45);
+    box-shadow: 0 0 28px rgba(16, 185, 129, 0.10);
+  }
+  .version-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .version-tag {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.32);
+    letter-spacing: 0.5px;
+  }
+  .version-entry.is-current .version-tag {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: rgba(16, 185, 129, 0.55);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.28);
+  }
+  .version-date {
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: 500;
+  }
+  .version-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 2px 0 8px;
+    color: #f3f4f6;
+  }
+  .version-desc {
+    font-size: 12.5px;
+    color: #9ca3af;
+    line-height: 1.6;
+    margin: 0 0 12px;
+  }
+  .version-tech {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .version-tech .tech-badge {
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+
   /* ── Pipeline Flow ────────────────────── */
   .pipeline-flow {
     display: flex;
@@ -1799,6 +1916,93 @@
       </div>
     </div>
 
+    <!-- Version History -->
+    <div class="glass-card no-anim" style="margin-top:20px">
+      <div class="section-title">Version History</div>
+      <p style="font-size:12px;color:#6b7280;margin:4px 0 20px">
+        Four major milestones &mdash; from the first working pipeline to a production-grade asymmetric GLM.
+      </p>
+      <div class="version-rail">
+
+        <!-- v2.0 — current -->
+        <div class="version-entry is-current">
+          <div class="version-node"></div>
+          <div class="version-card">
+            <div class="version-header">
+              <span class="version-tag">v2.0</span>
+              <span class="version-date">April 10, 2026</span>
+            </div>
+            <h3 class="version-title">Architectural Level-up</h3>
+            <p class="version-desc">
+              Refactored the Feature Poisson GLM to use independent home and away feature matrices. Previously, both sides of a match shared a single weight vector, so the model could only learn signals that affected total goals symmetrically. The new asymmetric architecture lets each learned weight influence exactly the side it belongs to &mdash; fixing the bottleneck that had been capping feature value at the noise floor.
+            </p>
+            <div class="version-tech">
+              <span class="tech-badge">ML Model</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- v1.5 -->
+        <div class="version-entry">
+          <div class="version-node"></div>
+          <div class="version-card">
+            <div class="version-header">
+              <span class="version-tag">v1.5</span>
+              <span class="version-date">April 10, 2026</span>
+            </div>
+            <h3 class="version-title">Data Expansion</h3>
+            <p class="version-desc">
+              Grew the GLM's feature set from 20 to 44 high-signal columns via an automated ranking system combining signed Spearman correlation and Random Forest gain importance across four Poisson targets. New features include keeper save%, clean-sheet rate, interceptions, discipline, xPts, and deep completions.
+            </p>
+            <div class="version-tech">
+              <span class="tech-badge">ML Model</span>
+              <span class="tech-badge">Data Pipeline</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- v1.2 -->
+        <div class="version-entry">
+          <div class="version-node"></div>
+          <div class="version-card">
+            <div class="version-header">
+              <span class="version-tag">v1.2</span>
+              <span class="version-date">April 5 &ndash; 6, 2026</span>
+            </div>
+            <h3 class="version-title">Cinematic Experience</h3>
+            <p class="version-desc">
+              Full UI/UX overhaul: glassmorphism redesign, cinematic loading intro with staggered reveals, and scroll-driven GSAP animations across Home, Models, and About. Backed by a GitHub Actions workflow that scrapes, processes, retrains, and auto-commits updated data and models every Monday.
+            </p>
+            <div class="version-tech">
+              <span class="tech-badge">UI / UX</span>
+              <span class="tech-badge">Infrastructure</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- v1.0 -->
+        <div class="version-entry">
+          <div class="version-node"></div>
+          <div class="version-card">
+            <div class="version-header">
+              <span class="version-tag">v1.0</span>
+              <span class="version-date">March 29 &ndash; 31, 2026</span>
+            </div>
+            <h3 class="version-title">The Foundation</h3>
+            <p class="version-desc">
+              End-to-end core: FBRef and Understat scrapers with entity resolution, vectorized feature engineering with leakage-safe rolling and EWMA form, the full 5-tier ensemble (Dixon-Coles, Bivariate Poisson, xG-DC, Feature Poisson, Stacked Ensemble), and the first live FastAPI deployment.
+            </p>
+            <div class="version-tech">
+              <span class="tech-badge">ML Model</span>
+              <span class="tech-badge">Data Pipeline</span>
+              <span class="tech-badge">Infrastructure</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 
 </div>
@@ -1931,6 +2135,25 @@ function switchTab(tab) {
           }
         });
       });
+
+      // Version History timeline — staggered reveal of individual entries
+      // so the rail "draws" itself as the user scrolls to it.
+      const rail = document.querySelector('#section-about .version-rail');
+      if (rail) {
+        gsap.from('#section-about .version-entry', {
+          y: 24,
+          opacity: 0,
+          duration: 0.55,
+          stagger: 0.09,
+          ease: 'power2.out',
+          scrollTrigger: {
+            trigger: rail,
+            start: 'top 78%',
+            once: true,
+          }
+        });
+      }
+
       ScrollTrigger.refresh();
     });
   }
