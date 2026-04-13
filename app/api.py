@@ -484,6 +484,7 @@ async def pipeline_status():
             "teams": len(_teams),
             "seasons": sorted(_df["season"].unique().tolist()) if _df is not None else [],
         },
+        "metrics": _pipeline_state.get("metrics", {}),
     }
 
 

@@ -40,6 +40,16 @@ XG_BLEND_GRID: list[float] = [0.0, 0.3, 0.5, 0.7, 0.85, 1.0]
 FP_L2_PENALTY_GRID: list[float] = [0.001, 0.01, 0.1, 1.0, 10.0]
 
 # ---------------------------------------------------------------------------
+# Prediction calibration
+# ---------------------------------------------------------------------------
+# Minimum 1X2 probability floor applied in BaseMatchModel.predict_1x2().
+# Prevents overconfident predictions from blowing up log-loss via -log(p)
+# when p → 0. Set to 0.5% — enough to prevent degenerate log(0) while
+# letting the model express confident predictions. DC only hits this floor
+# ~3 times across 869 OOF matches.
+PRED_MIN_PROB: float = 0.005
+
+# ---------------------------------------------------------------------------
 # FP_FEATURE_COLS  —  v2.0 (X_home / X_away asymmetric architecture)
 # ---------------------------------------------------------------------------
 #
@@ -73,52 +83,16 @@ FP_L2_PENALTY_GRID: list[float] = [0.001, 0.01, 0.1, 1.0, 10.0]
 # each stem so the two weight vectors operate on the same scale. NaN values
 # become 0 after standardization (= league average).
 FP_FEATURE_COLS: list[str] = [
-    # -----------------------------------------------------------------
-    # Rolling-window form (shift(1) + rolling mean, leakage-safe)
-    # -----------------------------------------------------------------
-    "xg_scored_5", "xg_conceded_5",
-    "ppda_5", "xg_overperformance_5",
-    "xpts_5",              # #1 feature on combined rank (Understat xPts)
-    "deep_5",              # deep completions — tempo / territory signal
-
-    # -----------------------------------------------------------------
-    # EWMA form (exponentially weighted, recency-sensitive)
-    # -----------------------------------------------------------------
-    "xg_scored_ewma", "ppda_ewma",
-
-    # -----------------------------------------------------------------
-    # Prior-season team context — ATTACKING PROFILE
-    # -----------------------------------------------------------------
-    "ctx_stats_poss",
-    "ctx_shooting_standard_sot_90",
-    "ctx_stats_per_90_minutes_gls",
-    "ctx_stats_per_90_minutes_g_pk",
-    "ctx_shooting_standard_sh_90",   # shot volume — attacking intent
-    "ctx_shooting_standard_g_sh",    # finishing efficiency — goals per shot
-
-    # -----------------------------------------------------------------
-    # Prior-season team context — KEEPER / GOAL PREVENTION
-    # -----------------------------------------------------------------
-    "ctx_keepers_performance_save",  # save% — direct goal-prevention
-    "ctx_keepers_performance_cs_2",  # clean-sheet rate
-    "ctx_keepers_performance_ga90",  # goals-against per 90
-
-    # -----------------------------------------------------------------
-    # Prior-season team context — DEFENSIVE WORK RATE
-    # -----------------------------------------------------------------
-    "ctx_misc_performance_int",      # interceptions
-    "ctx_misc_performance_tklw",     # tackles won
-
-    # -----------------------------------------------------------------
-    # Prior-season team context — DISCIPLINE / SET PIECES
-    # -----------------------------------------------------------------
-    "ctx_misc_performance_fls",      # fouls committed
-    "ctx_misc_performance_crdy",     # yellow cards
-
-    # -----------------------------------------------------------------
-    # Prior-season team context — OVERALL TEAM QUALITY
-    # -----------------------------------------------------------------
-    "ctx_playingtime_team_success_ppm",  # points per match last season
+    # Rolling-window form (5-match window, leakage-safe)
+    "xg_scored_5",           # recent attacking quality
+    "xg_conceded_5",         # recent defensive quality
+    "xg_overperformance_5",  # luck / finishing quality
+    "xpts_5",                # recent points trajectory (#1 combined rank)
+    # Prior-season team context (low-correlation, high-signal stems)
+    "ctx_stats_poss",                    # possession style
+    "ctx_keepers_performance_save",      # goalkeeper quality (save %)
+    "ctx_keepers_performance_ga90",      # goals conceded rate
+    "ctx_playingtime_team_success_ppm",  # overall team quality (PPM)
 ]
 
 

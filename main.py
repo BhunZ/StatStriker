@@ -374,6 +374,7 @@ def run_auto_mode(store: StorageBackend, tiers: list[int] | None = None) -> int:
         state["last_train_date"] = date.today().isoformat()
         state["last_train_matches"] = current_matches
         state["model_version"] = state.get("model_version", 0) + 1
+        state["metrics"] = predictor.get_metrics()
         store.save_state(state)
         exit_code = 3
         logger.info(
@@ -608,6 +609,7 @@ def main() -> None:
             state["last_train_date"] = date.today().isoformat()
             state["last_train_matches"] = current_matches
             state["model_version"] = state.get("model_version", 0) + 1
+            state["metrics"] = predictor.get_metrics()
             store.save_state(state)
             exit_code = 3
 
@@ -680,6 +682,7 @@ def main() -> None:
             state["last_train_date"] = date.today().isoformat()
             state["last_train_matches"] = current_matches
             state["model_version"] = state.get("model_version", 0) + 1
+            state["metrics"] = predictor.get_metrics()
             store.save_state(state)
             exit_code = 3
 

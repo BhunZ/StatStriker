@@ -108,7 +108,7 @@ class ModelEvaluator:
         y_pred : (n, 3)
             Predicted probabilities [P(H), P(D), P(A)].
         """
-        eps = 1e-15
+        eps = 1e-7
         y_pred = np.clip(y_pred, eps, 1.0 - eps)
         return -float(np.mean(np.sum(y_true * np.log(y_pred), axis=1)))
 

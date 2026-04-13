@@ -54,6 +54,11 @@ class EnsembleModel(BaseMatchModel):
         self.base_models_: list[BaseMatchModel] = base_models or []
         self._weights: np.ndarray = np.array([])  # learned model weights
         self._fast_mode: bool = False
+        self.oof_log_loss_: float | None = None    # OOF log-loss from weight optimisation
+        self.oof_brier_: float | None = None       # OOF Brier score
+        self.oof_rps_: float | None = None         # OOF ranked probability score
+        self.oof_accuracy_: float | None = None    # OOF accuracy
+        self.oof_n_matches_: int = 0               # number of OOF matches used
 
     def fit(self, df: pd.DataFrame, **kwargs) -> "EnsembleModel":
         """
@@ -151,6 +156,19 @@ class EnsembleModel(BaseMatchModel):
             options={"maxiter": 1000, "xatol": 1e-6},
         )
         self._weights = _softmax(result.x)
+        self.oof_log_loss_ = float(result.fun)
+        self.oof_n_matches_ = len(X_oof)
+
+        # Compute additional OOF metrics (Brier, RPS, accuracy)
+        blended_final = np.einsum("m,nmc->nc", self._weights, X_oof)
+        blended_final = np.clip(blended_final, 1e-10, 1.0)
+        blended_final = blended_final / blended_final.sum(axis=1, keepdims=True)
+        self.oof_brier_ = float(np.mean(np.sum((blended_final - y_oof) ** 2, axis=1)))
+        # RPS (ranked probability score)
+        cum_pred = np.cumsum(blended_final[:, :2], axis=1)
+        cum_true = np.cumsum(y_oof[:, :2], axis=1)
+        self.oof_rps_ = float(np.mean(np.sum((cum_pred - cum_true) ** 2, axis=1)) / 2)
+        self.oof_accuracy_ = float(np.mean(blended_final.argmax(axis=1) == y_oof.argmax(axis=1)))
 
         logger.info(
             "Ensemble weights: %s (log-loss=%.4f)",

@@ -1604,7 +1604,7 @@
           <div class="stat-label">Log Loss</div>
         </div>
         <div class="hero-stat">
-          <div class="stat-number" data-target="25">25</div>
+          <div class="stat-number" id="statTeams" data-target="25">25</div>
           <div class="stat-label">Teams</div>
         </div>
       </div>
@@ -1816,7 +1816,7 @@
           <div class="method-card">
             <div class="tier-badge">TIER 4</div>
             <h3>Feature Poisson GLM</h3>
-            <p>Generalized linear model incorporating rolling features: shots, possession, pressing metrics, and form trends as additional predictors beyond historical goals.</p>
+            <p>Generalized linear model with 8 curated feature stems: rolling xG, xPts, xG overperformance, goalkeeper save rate, goals-against rate, possession style, and points-per-match as predictors alongside team attack/defense ratings.</p>
           </div>
           <div class="method-card">
             <div class="tier-badge">TIER 5 &#8212; ENSEMBLE</div>
@@ -1864,17 +1864,22 @@
         </div>
         <div class="glass-card no-anim">
           <div class="section-title">Performance Metrics</div>
-          <p style="font-size:12px;color:#6b7280;margin:4px 0 16px">Backtested on 5 years of historical Premier League data</p>
+          <p style="font-size:12px;color:#6b7280;margin:4px 0 16px">Backtested via walk-forward temporal cross-validation</p>
           <div style="display:flex;gap:32px">
             <div>
-              <div class="stat-number" style="font-size:28px;color:#10b981">1.023</div>
+              <div class="stat-number" id="aboutLogLoss" style="font-size:28px;color:#10b981">--</div>
               <div class="stat-label">Log-Loss</div>
             </div>
             <div>
-              <div class="stat-number" style="font-size:28px;color:#10b981">0.214</div>
-              <div class="stat-label">Brier Score</div>
+              <div class="stat-number" id="aboutRps" style="font-size:28px;color:#10b981">--</div>
+              <div class="stat-label">RPS</div>
+            </div>
+            <div>
+              <div class="stat-number" id="aboutAccuracy" style="font-size:28px;color:#10b981">--</div>
+              <div class="stat-label">Accuracy</div>
             </div>
           </div>
+          <p id="aboutOofNote" style="font-size:11px;color:#4b5563;margin:12px 0 0">--</p>
         </div>
         <div class="glass-card no-anim">
           <div class="section-title">Data Sources</div>
@@ -1920,7 +1925,7 @@
     <div class="glass-card no-anim" style="margin-top:20px">
       <div class="section-title">Version History</div>
       <p style="font-size:12px;color:#6b7280;margin:4px 0 20px">
-        Four major milestones &mdash; from the first working pipeline to a production-grade asymmetric GLM.
+        Five major milestones &mdash; from the first working pipeline to a fully audited 5-tier ensemble.
       </p>
       <div class="version-rail">
 
@@ -1930,14 +1935,16 @@
           <div class="version-card">
             <div class="version-header">
               <span class="version-tag">v2.0</span>
-              <span class="version-date">April 10, 2026</span>
+              <span class="version-date">April 13, 2026</span>
             </div>
-            <h3 class="version-title">Architectural Level-up</h3>
+            <h3 class="version-title">StatStriker v2.0 &mdash; Audited Ensemble</h3>
             <p class="version-desc">
-              Refactored the Feature Poisson GLM to use independent home and away feature matrices. Previously, both sides of a match shared a single weight vector, so the model could only learn signals that affected total goals symmetrically. The new asymmetric architecture lets each learned weight influence exactly the side it belongs to &mdash; fixing the bottleneck that had been capping feature value at the noise floor.
+              Diagnosed and fixed critical over-regularization in Tier 4 (Feature Poisson) that had inflated log-loss from 0.99 to 1.72. Removed harmful team-parameter L2 penalty, curated features from 22 stems down to 8 high-signal ones (xG, xPts, keeper stats, PPM), and added hard bounds on team parameters. Full 4-pillar system audit verified all tiers, checked for data leakage, and validated the ensemble. Performance metrics now auto-update from the API after each retrain.
             </p>
             <div class="version-tech">
               <span class="tech-badge">ML Model</span>
+              <span class="tech-badge">System Audit</span>
+              <span class="tech-badge">Frontend</span>
             </div>
           </div>
         </div>
@@ -1950,9 +1957,9 @@
               <span class="version-tag">v1.5</span>
               <span class="version-date">April 10, 2026</span>
             </div>
-            <h3 class="version-title">Data Expansion</h3>
+            <h3 class="version-title">Asymmetric GLM &amp; Data Expansion</h3>
             <p class="version-desc">
-              Grew the GLM's feature set from 20 to 44 high-signal columns via an automated ranking system combining signed Spearman correlation and Random Forest gain importance across four Poisson targets. New features include keeper save%, clean-sheet rate, interceptions, discipline, xPts, and deep completions.
+              Refactored the Feature Poisson GLM to use independent home/away feature matrices and expanded features from 20 to 44 columns via automated ranking (Spearman correlation + Random Forest importance). Added keeper save%, xPts, interceptions, and deep completions.
             </p>
             <div class="version-tech">
               <span class="tech-badge">ML Model</span>
@@ -2268,9 +2275,23 @@ async function init() {
     document.getElementById('homeTeam').value = (urlHome && teams.teams.includes(urlHome)) ? urlHome : 'Arsenal';
     document.getElementById('awayTeam').value = (urlAway && teams.teams.includes(urlAway)) ? urlAway : 'Chelsea';
 
+    // Populate hero stats from API
     document.getElementById('statMatches').textContent = status.data.total_matches.toLocaleString();
-    const ll = status.pipeline.last_train_log_loss;
-    document.getElementById('statLogLoss').textContent = ll ? ll.toFixed(3) : '1.023';
+    document.getElementById('statTeams').textContent = status.data.teams;
+
+    // Populate metrics from pipeline_state (dynamic after each retrain)
+    const m = status.metrics || {};
+    const heroLL = m.ensemble_log_loss;
+    document.getElementById('statLogLoss').textContent = heroLL ? heroLL.toFixed(3) : '--';
+
+    // About section performance cards
+    if (m.ensemble_log_loss) document.getElementById('aboutLogLoss').textContent = m.ensemble_log_loss.toFixed(4);
+    if (m.ensemble_rps) document.getElementById('aboutRps').textContent = m.ensemble_rps.toFixed(4);
+    if (m.ensemble_accuracy) document.getElementById('aboutAccuracy').textContent = (m.ensemble_accuracy * 100).toFixed(1) + '%';
+    if (m.ensemble_oof_matches) {
+      document.getElementById('aboutOofNote').textContent =
+        m.ensemble_oof_matches + ' OOF matches \u00b7 ' + status.data.total_matches + ' total \u00b7 ' + status.data.teams + ' teams';
+    }
 
     // Surface data freshness in footer
     try {
@@ -2280,16 +2301,14 @@ async function init() {
       if (p.last_scrape_date) parts.push('Data: ' + fmt(p.last_scrape_date));
       if (p.last_train_date) parts.push('Model: ' + fmt(p.last_train_date));
       if (p.model_version) parts.push('v' + p.model_version);
-      if (parts.length) document.getElementById('footerFreshness').textContent = parts.join(' · ');
+      if (parts.length) document.getElementById('footerFreshness').textContent = parts.join(' \u00b7 ');
     } catch(_) {}
   } catch(e) {
     populateTeamSelect(FALLBACK_TEAMS);
     document.getElementById('homeTeam').value = 'Arsenal';
     document.getElementById('awayTeam').value = 'Chelsea';
-    document.getElementById('statMatches').textContent = '1,069';
-    document.getElementById('statLogLoss').textContent = '1.023';
     showError(e.name === 'AbortError'
-      ? 'Connection timed out. The API server may be starting up — try again in a moment.'
+      ? 'Connection timed out. The API server may be starting up \u2014 try again in a moment.'
       : 'Cannot connect to API. Make sure the server is running.');
   }
 }

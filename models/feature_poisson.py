@@ -311,10 +311,13 @@ class FeaturePoisson(BaseMatchModel):
 
         nll = -np.sum(weights * log_lik)
 
-        # L2 penalty on BOTH feature weight vectors (team params stay free)
+        # L2 penalty on feature weight vectors
         nll += l2_penalty * (np.sum(w_home ** 2) + np.sum(w_away ** 2))
 
-        # Sum-to-one constraint
+        # Sum-to-one constraint on alpha only (matches Dixon-Coles Tier 1).
+        # Beta is left unconstrained — bounded via optimizer bounds [-2, 2]
+        # on log_beta to prevent the fold-15 explosion (674x) without the
+        # over-regularization that FP_TEAM_L2_PENALTY + beta constraint caused.
         nll += _CONSTRAINT_WEIGHT * (np.sum(alpha) - n_teams) ** 2
 
         return nll
@@ -370,8 +373,8 @@ class FeaturePoisson(BaseMatchModel):
 
         bounds = (
             [(None, None)]                         # mu
-            + [(None, None)] * n_teams             # log(alpha)
-            + [(None, None)] * n_teams             # log(beta)
+            + [(-2.0, 2.0)] * n_teams              # log(alpha) — bounded
+            + [(-2.0, 2.0)] * n_teams              # log(beta)  — bounded
             + [(None, None)]                       # gamma
             + [(-0.5, 0.5)]                        # rho
             + [(None, None)] * (2 * n_features)    # w_home || w_away

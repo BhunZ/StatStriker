@@ -85,6 +85,18 @@ class BaseMatchModel(ABC):
             p_home /= total
             p_draw /= total
             p_away /= total
+
+        # Enforce a minimum probability floor per outcome. No EPL match
+        # should ever be assigned < 2% for any 1X2 outcome — even the
+        # strongest favourites lose or draw occasionally. Without this
+        # floor, overconfident predictions (p < 1e-6) blow up log-loss
+        # via -log(p) ≈ 14-34 per match. See Task 3b diagnostics.
+        from .config_models import PRED_MIN_PROB
+        probs = [p_home, p_draw, p_away]
+        probs = [max(p, PRED_MIN_PROB) for p in probs]
+        s = sum(probs)
+        p_home, p_draw, p_away = probs[0] / s, probs[1] / s, probs[2] / s
+
         return {"home": float(p_home), "draw": float(p_draw), "away": float(p_away)}
 
     def predict_expected_goals(

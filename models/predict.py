@@ -211,6 +211,37 @@ class MatchPredictor:
         return combined
 
     # ------------------------------------------------------------------
+    # Metrics (for pipeline_state.json)
+    # ------------------------------------------------------------------
+
+    def get_metrics(self) -> dict:
+        """
+        Return ensemble performance metrics for pipeline_state.json.
+
+        Pulls OOF metrics computed during ensemble weight optimisation,
+        plus dataset-level stats.  Returns an empty dict if no ensemble
+        is fitted.
+        """
+        ens = self._models.get("ensemble")
+        if ens is None or not getattr(ens, "oof_log_loss_", None):
+            return {}
+
+        teams = set(self._df["home_team"].unique()) | set(self._df["away_team"].unique())
+        return {
+            "ensemble_log_loss": round(ens.oof_log_loss_, 4),
+            "ensemble_brier": round(getattr(ens, "oof_brier_", 0), 4),
+            "ensemble_rps": round(getattr(ens, "oof_rps_", 0), 4),
+            "ensemble_accuracy": round(getattr(ens, "oof_accuracy_", 0), 4),
+            "ensemble_oof_matches": ens.oof_n_matches_,
+            "ensemble_weights": {
+                m.name: round(float(w), 4)
+                for m, w in zip(ens.base_models_, ens._weights)
+            },
+            "total_matches": len(self._df),
+            "n_teams": len(teams),
+        }
+
+    # ------------------------------------------------------------------
     # Serialization
     # ------------------------------------------------------------------
 
