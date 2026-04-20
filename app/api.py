@@ -469,6 +469,16 @@ async def list_seasons():
 @app.get("/status")
 async def pipeline_status():
     """Return pipeline state: last scrape/train dates, model version, etc."""
+    # Re-read from disk on every call so scrape-only runs (no retrain)
+    # are reflected without restarting the server.
+    live_state = _pipeline_state
+    if STATE_PATH.exists():
+        try:
+            with open(STATE_PATH, "r", encoding="utf-8") as f:
+                live_state = json.load(f)
+        except Exception:
+            pass
+
     models_info = {}
     if _predictor:
         for name, model in _predictor._models.items():
@@ -477,14 +487,14 @@ async def pipeline_status():
             }
 
     return {
-        "pipeline": _pipeline_state,
+        "pipeline": live_state,
         "models": models_info,
         "data": {
             "total_matches": len(_df) if _df is not None else 0,
             "teams": len(_teams),
             "seasons": sorted(_df["season"].unique().tolist()) if _df is not None else [],
         },
-        "metrics": _pipeline_state.get("metrics", {}),
+        "metrics": live_state.get("metrics", {}),
     }
 
 

@@ -1938,9 +1938,12 @@
               <span class="version-date">April 13, 2026</span>
             </div>
             <h3 class="version-title">Production Ensemble</h3>
-            <p class="version-desc">
-              Fully calibrated 5-tier ensemble with improved prediction accuracy. Tier 4 now uses 8 curated feature stems (xG, xPts, keeper save%, PPM) for sharper team profiling. All models pass a rigorous 4-pillar audit covering individual tier health, model diversity, data leakage, and ensemble validation. Performance metrics on the dashboard now update automatically after each weekly retrain.
-            </p>
+            <ul class="version-desc" style="padding-left:16px;margin:0;display:flex;flex-direction:column;gap:4px">
+              <li>Fully calibrated 5-tier ensemble — ensemble LL improved to 0.993</li>
+              <li>Tier 4 retrained on 8 curated feature stems (xG, xPts, keeper save%, PPM)</li>
+              <li>All 5 models validated through a rigorous 4-pillar audit</li>
+              <li>Performance metrics on the dashboard auto-update after each weekly retrain</li>
+            </ul>
             <div class="version-tech">
               <span class="tech-badge">ML Model</span>
               <span class="tech-badge">Automation</span>
@@ -1957,9 +1960,11 @@
               <span class="version-date">April 10, 2026</span>
             </div>
             <h3 class="version-title">Asymmetric GLM &amp; Data Expansion</h3>
-            <p class="version-desc">
-              Refactored the Feature Poisson GLM to use independent home/away feature matrices and expanded features from 20 to 44 columns via automated ranking (Spearman correlation + Random Forest importance). Added keeper save%, xPts, interceptions, and deep completions.
-            </p>
+            <ul class="version-desc" style="padding-left:16px;margin:0;display:flex;flex-direction:column;gap:4px">
+              <li>Tier 4 now learns separate weight vectors for home and away sides</li>
+              <li>Features expanded from 20 to 44 columns via Spearman + Random Forest ranking</li>
+              <li>New signals: keeper save%, xPts, interceptions, deep completions</li>
+            </ul>
             <div class="version-tech">
               <span class="tech-badge">ML Model</span>
               <span class="tech-badge">Data Pipeline</span>
@@ -1976,9 +1981,10 @@
               <span class="version-date">April 5 &ndash; 6, 2026</span>
             </div>
             <h3 class="version-title">Cinematic Experience</h3>
-            <p class="version-desc">
-              Full UI/UX overhaul: glassmorphism redesign, cinematic loading intro with staggered reveals, and scroll-driven GSAP animations across Home, Models, and About. Backed by a GitHub Actions workflow that scrapes, processes, retrains, and auto-commits updated data and models every Monday.
-            </p>
+            <ul class="version-desc" style="padding-left:16px;margin:0;display:flex;flex-direction:column;gap:4px">
+              <li>Full UI/UX overhaul: glassmorphism cards, cinematic loading intro, GSAP scroll animations</li>
+              <li>Weekly GitHub Actions pipeline: auto-scrape, process, retrain, and commit every Monday</li>
+            </ul>
             <div class="version-tech">
               <span class="tech-badge">UI / UX</span>
               <span class="tech-badge">Infrastructure</span>
@@ -1995,9 +2001,11 @@
               <span class="version-date">March 29 &ndash; 31, 2026</span>
             </div>
             <h3 class="version-title">The Foundation</h3>
-            <p class="version-desc">
-              End-to-end core: FBRef and Understat scrapers with entity resolution, vectorized feature engineering with leakage-safe rolling and EWMA form, the full 5-tier ensemble (Dixon-Coles, Bivariate Poisson, xG-DC, Feature Poisson, Stacked Ensemble), and the first live FastAPI deployment.
-            </p>
+            <ul class="version-desc" style="padding-left:16px;margin:0;display:flex;flex-direction:column;gap:4px">
+              <li>FBRef + Understat scrapers with entity resolution and feature engineering</li>
+              <li>Full 5-tier ensemble: Dixon-Coles, Bivariate Poisson, xG-DC, Feature Poisson, Stacked Ensemble</li>
+              <li>First live FastAPI deployment with real-time 1X2 predictions</li>
+            </ul>
             <div class="version-tech">
               <span class="tech-badge">ML Model</span>
               <span class="tech-badge">Data Pipeline</span>
