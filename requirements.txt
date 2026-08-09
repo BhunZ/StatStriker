@@ -5,7 +5,9 @@ lxml>=5.0.0
 html5lib>=1.1
 
 # Data processing
-pandas==3.0.0
+# Pinned to the 3.x line: 3.0 is what the pipeline is tested against, and an
+# exact pin with no lockfile ages badly while everything else here uses >=.
+pandas>=3.0,<4
 pyarrow>=18.0.0
 
 # Fuzzy matching

@@ -27,7 +27,13 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+
+      # Runs before the pipeline on purpose. A change that breaks entity resolution or
+      # lets a rolling feature see its own match would otherwise be found by nobody —
+      # the pipeline would keep going green and keep committing.
+      - name: Tests
+        run: pytest -q
 
       - name: Run pipeline (auto mode)
         env:
@@ -38,7 +44,14 @@ jobs:
           python main.py --auto
           EXIT_CODE=$?
           echo "exit_code=$EXIT_CODE" >> "$GITHUB_ENV"
-          # Exit codes 0, 2, 3 are all success; only 1 is error
+          # 0 = nothing changed, 2 = new data, 3 = retrained — all fine.
+          # 4 = the data quality gate rejected the scrape. The pipeline itself worked, so
+          # this is not a crash, but nothing may be committed and the run must go red or
+          # a broken scraper would look like a quiet week.
+          if [ "$EXIT_CODE" -eq 4 ]; then
+            echo "::error::Data quality gate rejected the scrape — nothing committed"
+            exit 1
+          fi
           if [ "$EXIT_CODE" -eq 1 ]; then
             echo "Pipeline failed with error"
             exit 1

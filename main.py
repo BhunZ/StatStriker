@@ -21,6 +21,7 @@ Exit Codes (for CI/CD orchestration)
     0 : Success — inference only, no state change
     2 : New data scraped and processed
     3 : Full model retraining completed
+    4 : Data quality gate rejected the scrape — nothing trained, nothing committed
     1 : Error occurred
 
 Storage Backends
@@ -43,6 +44,7 @@ from datetime import date, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from config import (
@@ -56,6 +58,7 @@ from config import (
     PROCESSED_DIR,
     MODEL_OUTPUT_DIR,
 )
+import quality
 from scrapers import FBRefScraper, UnderstatScraper
 from processors import EntityResolver, SchemaNormalizer, FeatureEngineer
 from storage import StorageManager, StorageBackend
@@ -68,6 +71,7 @@ from storage import StorageManager, StorageBackend
 SCRAPE_INTERVAL_DAYS: int = 7      # minimum days between scrapes
 RETRAIN_MATCH_THRESHOLD: int = 80  # new matches needed to trigger retrain
 DECAY_THRESHOLD: float = 1.05      # 5% log-loss increase triggers retrain
+MIN_DECAY_MATCHES: int = 20        # fewer unseen matches than this is noise, not decay
 
 
 # ---------------------------------------------------------------------------
@@ -250,7 +254,8 @@ def _should_scrape(state: dict) -> bool:
     return days_since >= SCRAPE_INTERVAL_DAYS
 
 
-def _should_train(state: dict, current_matches: int) -> bool:
+def _should_train(state: dict, current_matches: int,
+                  features_df: pd.DataFrame | None = None) -> bool:
     """
     Check if retraining is due based on:
     1. Number of new matches since last training
@@ -269,18 +274,26 @@ def _should_train(state: dict, current_matches: int) -> bool:
                      new_matches, RETRAIN_MATCH_THRESHOLD)
         return True
 
-    # Condition 2: model decay detected
+    # Condition 2: the saved model has got worse on matches it was not trained on.
+    #
+    # This used to read `state["recent_predictions"]` and needed 20 entries with known
+    # results. Nothing in the codebase ever appended to that list, and nothing ever wrote
+    # `last_train_log_loss` either, so `baseline_ll` was permanently None and the whole
+    # branch was unreachable — the pipeline advertised decay detection and had run for
+    # four months without it once being able to fire.
+    #
+    # No ledger of past predictions is needed: matches played since the last training are
+    # by definition unseen by the saved model, so scoring it on them is a genuine
+    # out-of-sample check using data already on disk.
     baseline_ll = state.get("last_train_log_loss")
-    recent_preds = state.get("recent_predictions", [])
-    if baseline_ll and len(recent_preds) >= 20:
-        import numpy as np
-        actuals_available = [p for p in recent_preds if p.get("actual")]
-        if len(actuals_available) >= 20:
-            recent_ll = _compute_recent_log_loss(actuals_available)
+    if baseline_ll and features_df is not None:
+        recent_ll, n_scored = _log_loss_since_last_train(state, features_df)
+        if recent_ll is not None:
             decay_ratio = recent_ll / baseline_ll
             logger.info(
-                "Model decay check: recent_LL=%.4f, baseline_LL=%.4f, ratio=%.3f",
-                recent_ll, baseline_ll, decay_ratio,
+                "Model decay check on %d unseen matches: recent_LL=%.4f, "
+                "baseline_LL=%.4f, ratio=%.3f",
+                n_scored, recent_ll, baseline_ll, decay_ratio,
             )
             if decay_ratio > DECAY_THRESHOLD:
                 logger.info("Retrain triggered: decay ratio %.3f > %.3f threshold",
@@ -296,26 +309,50 @@ def _should_train(state: dict, current_matches: int) -> bool:
     return False
 
 
-def _compute_recent_log_loss(predictions: list[dict]) -> float:
-    """Compute log-loss on recent predictions that have actuals."""
-    import numpy as np
-    eps = 1e-10
-    total_ll = 0.0
-    n = 0
-    for p in predictions:
-        probs = p.get("predicted", [1/3, 1/3, 1/3])
-        actual = p.get("actual")
-        if actual == "home":
-            total_ll -= np.log(max(probs[0], eps))
-        elif actual == "draw":
-            total_ll -= np.log(max(probs[1], eps))
-        elif actual == "away":
-            total_ll -= np.log(max(probs[2], eps))
-        else:
-            continue
-        n += 1
-    return total_ll / max(n, 1)
+def _log_loss_since_last_train(
+    state: dict, df: pd.DataFrame
+) -> tuple[float | None, int]:
+    """Score the saved models on matches played after the last training run.
 
+    Those matches are unseen by definition, so this is a real out-of-sample reading and
+    needs no record of past predictions. Returns ``(None, 0)`` when there is nothing
+    usable — no training date, too few new matches, or no models on disk — so the caller
+    simply skips the check rather than guessing.
+    """
+    last_train_date = state.get("last_train_date")
+    if not last_train_date:
+        return None, 0
+
+    unseen = df[pd.to_datetime(df["date"]) > pd.Timestamp(last_train_date)]
+    if len(unseen) < MIN_DECAY_MATCHES:
+        logger.info("Decay check skipped: only %d matches since %s (need %d)",
+                    len(unseen), last_train_date, MIN_DECAY_MATCHES)
+        return None, len(unseen)
+
+    try:
+        from models import MatchPredictor
+
+        predictor = MatchPredictor.load_models(MODEL_OUTPUT_DIR, df)
+        model = predictor._models.get("ensemble") or next(iter(predictor._models.values()))
+    except Exception as exc:  # noqa: BLE001 — a decay check must never break the run
+        logger.warning("Decay check skipped: could not load models (%s)", exc)
+        return None, len(unseen)
+
+    eps = 1e-10
+    total, n = 0.0, 0
+    for _, row in unseen.iterrows():
+        try:
+            probs = model.predict_1x2(row["home_team"], row["away_team"])
+        except Exception:  # noqa: BLE001 — a promoted club the model has never seen
+            continue
+        hg, ag = int(row["home_goals"]), int(row["away_goals"])
+        p = probs["home"] if hg > ag else (probs["draw"] if hg == ag else probs["away"])
+        total -= float(np.log(max(p, eps)))
+        n += 1
+
+    if n < MIN_DECAY_MATCHES:
+        return None, n
+    return total / n, n
 
 def run_auto_mode(store: StorageBackend, tiers: list[int] | None = None) -> int:
     """
@@ -344,6 +381,17 @@ def run_auto_mode(store: StorageBackend, tiers: list[int] | None = None) -> int:
         understat_deep_df = us_scraper.scrape_all_deep_stats()
         features = run_processing(fbref_df, understat_df, understat_deep_df)
 
+        # Gate before anything is trained on this or committed. A scraper that keeps
+        # answering 200 after a site changes its markup produces fewer rows, or nulls, or
+        # team names that no longer resolve — all of which commit cleanly and are noticed
+        # much later, if at all.
+        logger.info("=== AUTO: Data quality checks ===")
+        quality.assert_ok(
+            features,
+            previous_matches=state.get("last_scrape_matches"),
+            previous_had_xg=bool(state.get("last_scrape_matches")),
+        )
+
         state["last_scrape_date"] = date.today().isoformat()
         state["last_scrape_matches"] = len(features)
         store.save_state(state)
@@ -361,7 +409,7 @@ def run_auto_mode(store: StorageBackend, tiers: list[int] | None = None) -> int:
 
     current_matches = len(pd.read_parquet(features_path))
 
-    if _should_train(state, current_matches):
+    if _should_train(state, current_matches, features_df=pd.read_parquet(features_path)):
         logger.info("=== AUTO: Retraining models ===")
         predictor = MatchPredictor.from_parquet(features_path)
         predictor.fit_all(tiers=tiers)
@@ -374,7 +422,10 @@ def run_auto_mode(store: StorageBackend, tiers: list[int] | None = None) -> int:
         state["last_train_date"] = date.today().isoformat()
         state["last_train_matches"] = current_matches
         state["model_version"] = state.get("model_version", 0) + 1
-        state["metrics"] = predictor.get_metrics()
+        metrics = predictor.get_metrics()
+        state["metrics"] = metrics
+        # Without this the decay check above has no baseline and silently never fires.
+        state["last_train_log_loss"] = metrics.get("ensemble_log_loss")
         store.save_state(state)
         exit_code = 3
         logger.info(
@@ -707,6 +758,11 @@ def main() -> None:
         logger.info("Pipeline finished successfully in %.1fs (exit code %d)", total, exit_code)
         sys.exit(exit_code)
 
+    except quality.DataQualityError as exc:
+        # Distinct from a crash: the pipeline worked, the data did not pass. The workflow
+        # treats it as a failure and commits nothing.
+        logger.error("Data quality gate stopped the run:\n%s", exc)
+        sys.exit(4)
     except KeyboardInterrupt:
         logger.warning("Pipeline interrupted by user")
         sys.exit(1)

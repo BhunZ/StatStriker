@@ -146,8 +146,8 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Local-only scripts
-Scraping Data.py
+# Local-only scripts. smoke_test.py refits every model and takes about seven
+# minutes; the fast, deterministic version of what it checks lives in tests/.
 smoke_test.py
 
 # Claude Code
