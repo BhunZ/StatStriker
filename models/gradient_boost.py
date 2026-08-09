@@ -14,17 +14,28 @@ non-linearities the Poisson likelihood cannot express. Being wrong in a differen
 the entire point — a member that is individually weaker but decorrelated is worth more to
 a blend than a fourth variation on Dixon-Coles.
 
-**Feature safety.** The processed frame carries 220 numeric columns and most of them
-cannot be used:
+**Feature safety.** Of the 220 numeric columns, 10 are the result of the match being
+predicted (``home_goals``, ``home_xg``, …) and can never be used. The rest are safe, and
+both groups were checked rather than assumed:
 
-* 10 are the result of the match being predicted (``home_goals``, ``home_xg``, …).
-* 168 are ``ctx_*`` season aggregates scraped from FBRef's team tables. These are
-  *end-of-season* totals written onto every match of that season — verified constant
-  within each (team, season) group, so Arsenal's first match of 2024-25 carries the fact
-  that Arsenal finished the season on 86 goals. Using them would be reading the future.
+* Rolling and EWMA columns are built with ``.shift(1)``. Verified match by match: a
+  feature equals the mean over strictly earlier matches, and rewriting one match's score
+  leaves that match's own features untouched.
+* ``ctx_*`` columns are constant within a (team, season), which looks like a season total
+  written backwards onto every match. It is not: ``FeatureEngineer._load_team_context``
+  shifts the season key forward, so a 2024-25 match carries 2023-24 figures. Across 34
+  (team, season) pairs these correlate 0.995 with the prior season's totals and only 0.589
+  with the current season's. Constant-within-season is what a correctly lagged prior-season
+  feature is *supposed* to look like.
 
-That leaves the 42 rolling and EWMA columns, which are built with ``.shift(1)`` and were
-checked match by match. Only those are fed here.
+A team's first season in the data has no prior season, so its ``ctx_*`` are missing —
+which HistGradientBoosting handles natively.
+
+**Which of the safe columns to actually use** is a separate question from safety, and the
+answer is not "all of them". Roughly a thousand matches against 210 features is too thin:
+most ``ctx_*`` entries are squad age, cards and penalty counts, and feeding them costs
+accuracy. On a 240-match hold-out, form columns only scored 1.078 against 1.092 for the
+full set, so ``form_only`` is the default. Pass ``form_only=False`` to use everything.
 """
 
 from __future__ import annotations
@@ -48,14 +59,17 @@ _OUTCOME = re.compile(r"^(home|away)_(goals|xg|shots|poss|ppda|deep|xpts)$")
 _DEFAULT_LAMBDA = (1.5, 1.2)
 
 
-def safe_feature_columns(df: pd.DataFrame) -> list[str]:
-    """The columns a model may legitimately see before kick-off.
+def safe_feature_columns(df: pd.DataFrame, form_only: bool = True) -> list[str]:
+    """Columns a model may legitimately see before kick-off.
 
-    Excludes the match's own result and every ``ctx_*`` season aggregate — see the module
-    docstring for why the latter are future information rather than context.
+    Always drops the result of the match being predicted. `ctx_*` prior-season columns are
+    safe but off by default — see the module docstring: they are mostly squad age, cards
+    and penalty counts, and on this much data they cost more than they add.
     """
-    numeric = df.select_dtypes("number").columns
-    return sorted(c for c in numeric if not _OUTCOME.match(c) and "_ctx_" not in c)
+    numeric = [c for c in df.select_dtypes("number").columns if not _OUTCOME.match(c)]
+    if form_only:
+        numeric = [c for c in numeric if "_ctx_" not in c]
+    return sorted(numeric)
 
 
 class GradientBoostModel(BaseMatchModel):
@@ -70,6 +84,7 @@ class GradientBoostModel(BaseMatchModel):
         min_samples_leaf: int = 30,
         l2_regularization: float = 1.0,
         random_state: int = 0,
+        form_only: bool = True,
     ) -> None:
         super().__init__(name="gradient_boost", max_goals=max_goals)
         # Deliberately small trees and a slow rate: roughly a thousand matches against
@@ -86,6 +101,7 @@ class GradientBoostModel(BaseMatchModel):
         self.feature_cols_: list[str] = []
         self._alpha_: float = 0.0                    # shrinkage towards the base rate
         self._base_rate_: np.ndarray = np.array([1 / 3, 1 / 3, 1 / 3])
+        self._form_only = form_only
         self._latest_features_: dict[str, dict[str, float]] = {}
         self._lambda_: tuple[float, float] = _DEFAULT_LAMBDA
 
@@ -159,7 +175,7 @@ class GradientBoostModel(BaseMatchModel):
         return best_alpha
 
     def fit(self, df: pd.DataFrame, **kwargs) -> "GradientBoostModel":
-        self.feature_cols_ = safe_feature_columns(df)
+        self.feature_cols_ = safe_feature_columns(df, form_only=self._form_only)
         if not self.feature_cols_:
             raise ValueError("no usable feature columns — is this the processed frame?")
 

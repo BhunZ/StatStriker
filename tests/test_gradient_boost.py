@@ -4,9 +4,8 @@ It exists because the other four are the same thing in different clothes — gen
 Poisson models that estimate a scoring rate per side and read 1X2 off the grid — and out
 of fold they correlate 0.94-0.997, so blending them bought almost nothing.
 
-Two things about it need guarding. It must never see the future, which here means both
-the match's own result and the `ctx_*` season aggregates, which are end-of-season totals
-written onto every match of that season. And its probabilities must stay believable:
+Two things about it need guarding. It must never see the match's own result. And its
+probabilities must stay believable:
 boosted trees are sharp and uncalibrated, and this one reached 0.97 on a market where the
 sharpest bookmakers rarely pass 0.90.
 """
@@ -40,11 +39,16 @@ def test_the_matchs_own_result_is_never_a_feature(frame):
         assert banned not in cols
 
 
-def test_season_aggregates_are_excluded(frame):
-    """`ctx_*` is constant within a (team, season) — it is the end-of-season total written
-    onto the first match of that season, so it is future information, not context."""
-    cols = safe_feature_columns(frame)
-    assert not [c for c in cols if "_ctx_" in c]
+def test_season_aggregates_are_off_by_default_but_not_forbidden(frame):
+    """`ctx_*` is constant within a (team, season), which looks like leakage and is not:
+    FeatureEngineer shifts the season key so a match carries the PRIOR season's figures
+    (correlation 0.995 with prior-season totals, 0.589 with the current season's).
+
+    They are excluded by default for a different reason — 210 features on a thousand
+    matches measured worse than 42 — so this is a modelling choice, not a safety rule.
+    """
+    assert not [c for c in safe_feature_columns(frame) if "_ctx_" in c]
+    assert [c for c in safe_feature_columns(frame, form_only=False) if "_ctx_" in c]
 
 
 def test_rolling_form_columns_are_kept(frame):
