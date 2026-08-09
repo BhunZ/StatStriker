@@ -20,6 +20,7 @@ from .dixon_coles import DixonColesModel
 from .bivariate_poisson import BivariatePoisson
 from .xg_dixon_coles import XGDixonColes
 from .feature_poisson import FeaturePoisson
+from .gradient_boost import GradientBoostModel
 from .ensemble import EnsembleModel
 from .evaluation import ModelEvaluator
 
@@ -34,6 +35,11 @@ _TIER_FACTORIES: dict[int, Callable[[], BaseMatchModel]] = {
     2: BivariatePoisson,
     3: XGDixonColes,
     4: lambda: FeaturePoisson(symmetric_mode=True),
+    # Tier 5 is the only member that is not a Poisson variant. Tiers 1-4 correlate
+    # 0.69-0.997 out of fold; this one correlates 0.50-0.65 with them, which is what
+    # makes the blend worth computing rather than an expensive way to average four
+    # near-copies. See models/gradient_boost.py.
+    5: GradientBoostModel,
 }
 
 
@@ -66,15 +72,15 @@ class MatchPredictor:
 
     def fit_all(self, tiers: list[int] | None = None) -> None:
         """
-        Fit specified tiers (default: all 1-5).
+        Fit specified tiers (default: all 1-6).
 
-        Tier 5 (ensemble) automatically wraps Tiers 1-4 as base models.
+        Tier 6 (ensemble) automatically wraps Tiers 1-5 as base models.
         """
-        tiers = tiers or [1, 2, 3, 4, 5]
+        tiers = tiers or [1, 2, 3, 4, 5, 6]
 
         for tier in tiers:
-            if tier == 5:
-                # Ensemble needs Tiers 1-4 fitted first
+            if tier == 6:
+                # Ensemble needs the base tiers fitted first
                 self._fit_ensemble()
                 continue
 
@@ -88,13 +94,14 @@ class MatchPredictor:
             self._models[model.name] = model
 
     def _fit_ensemble(self) -> None:
-        """Fit Tier 5 ensemble using fresh instances of Tiers 1-4."""
-        logger.info("=== Fitting Tier 5: ensemble ===")
+        """Fit the ensemble using fresh instances of every base tier."""
+        logger.info("=== Fitting Tier 6: ensemble ===")
         base_models = [
             DixonColesModel(half_life_years=1.5),
             BivariatePoisson(half_life_years=1.5),
             XGDixonColes(half_life_years=1.5),
             FeaturePoisson(half_life_years=1.5, symmetric_mode=True),
+            GradientBoostModel(),
         ]
         ensemble = EnsembleModel(base_models=base_models)
         ensemble.fit(self._df)
@@ -133,7 +140,7 @@ class MatchPredictor:
             if isinstance(tier, int):
                 name = _TIER_FACTORIES.get(tier, lambda: None)
                 if name is None:
-                    name = "ensemble" if tier == 5 else str(tier)
+                    name = "ensemble" if tier == 6 else str(tier)
                 else:
                     name = name().name
             else:
