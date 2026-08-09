@@ -436,6 +436,7 @@ class FeaturePoisson(BaseMatchModel):
         self.symmetric_mode_ = self._symmetric_mode
         self.fp_version_ = FP_ARCHITECTURE_VERSION
         self._fitted = True
+        self._latest_features_ = self._snapshot_latest_features(df)
 
         logger.info(
             "Feature Poisson v%d fitted: %d teams, %d stems "
@@ -496,6 +497,76 @@ class FeaturePoisson(BaseMatchModel):
             return self.attack_[team], self.defense_[team]
         return self._handle_cold_start(team)
 
+    # ------------------------------------------------------------------
+    # Feature plumbing
+    #
+    # The learned feature weights only apply when `features_home` / `features_away`
+    # reach `predict_scoreline_probs`. They did not: `BaseMatchModel.predict_batch`
+    # calls `predict_1x2(home_team, away_team)` with no kwargs, and nothing else in the
+    # repo passed them either. Every out-of-fold prediction the ensemble fitted its
+    # weights on, and every live prediction, therefore ran with the feature term at
+    # exactly zero — this model silently degenerated into the plain Poisson it is meant
+    # to improve on, which is why it correlated 0.995 with Dixon-Coles.
+    # ------------------------------------------------------------------
+
+    def _row_features(self, row, side: str) -> np.ndarray | None:
+        """Feature vector for one side of one fixture, taken from that fixture's own row."""
+        stems = getattr(self, "feature_cols_used_stems_", []) or []
+        if not stems:
+            return None
+        values = []
+        for stem in stems:
+            value = row.get(f"{side}_{stem}")
+            values.append(0.0 if value is None or pd.isna(value) else float(value))
+        return np.asarray(values, dtype=float)
+
+    def _snapshot_latest_features(self, df: pd.DataFrame) -> dict[str, np.ndarray]:
+        """Each team's most recent feature vector, for predicting a fixture not yet played.
+
+        A future match has no row to read, so live prediction falls back to the latest
+        known form. That is the right reading for an upcoming fixture and the wrong one
+        for a historical match — score history through `predict_batch`, which uses each
+        match's own row.
+        """
+        stems = getattr(self, "feature_cols_used_stems_", []) or []
+        if not stems or "date" not in df.columns:
+            return {}
+
+        latest: dict[str, np.ndarray] = {}
+        for _, row in df.sort_values("date").iterrows():
+            for side in ("home", "away"):
+                team = row.get(f"{side}_team")
+                vec = self._row_features(row, side)
+                if team is not None and vec is not None:
+                    latest[team] = vec
+        return latest
+
+    def predict_batch(self, fixtures: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """Predict a set of fixtures, giving each one its own features.
+
+        Overrides the base implementation, which passes team names only. This is the path
+        the ensemble uses to build out-of-fold predictions, so without it the weights are
+        learned from a model running with its features switched off.
+        """
+        stems = getattr(self, "feature_cols_used_stems_", []) or []
+        if not stems or "features_home" in kwargs:
+            return super().predict_batch(fixtures, **kwargs)
+
+        rows = []
+        for _, row in fixtures.iterrows():
+            rows.append(self.predict_1x2(
+                row["home_team"], row["away_team"],
+                features_home=self._row_features(row, "home"),
+                features_away=self._row_features(row, "away"),
+                **kwargs,
+            ))
+        out = fixtures.copy()
+        probs = pd.DataFrame(rows)
+        out["p_home"] = probs["home"].values
+        out["p_draw"] = probs["draw"].values
+        out["p_away"] = probs["away"].values
+        return out
+
     def predict_scoreline_probs(
         self, home_team: str, away_team: str, **kwargs
     ) -> np.ndarray:
@@ -518,6 +589,18 @@ class FeaturePoisson(BaseMatchModel):
         # and then multiplied by its own learned weight vector.
         features_home = kwargs.get("features_home")
         features_away = kwargs.get("features_away")
+
+        # No features supplied means a fixture that has not been played, which is what the
+        # live API asks for. Fall back to each team's latest known form rather than to
+        # zero — zero is not "no information", it is "exactly average on every stem", and
+        # it silently turns this model into the plain Poisson it exists to improve on.
+        # Historical scoring must go through predict_batch, which passes the match's own row.
+        latest = getattr(self, "_latest_features_", None)
+        if latest:
+            if features_home is None:
+                features_home = latest.get(home_team)
+            if features_away is None:
+                features_away = latest.get(away_team)
 
         # Legacy path: ``features`` kwarg used to apply symmetrically.
         # Warn once and treat it as both sides for mid-refactor compatibility.

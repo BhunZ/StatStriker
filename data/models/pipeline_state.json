@@ -1,24 +1,24 @@
 {
   "last_scrape_date": "2026-08-03",
   "last_scrape_matches": 1140,
-  "last_train_date": "2026-04-13",
-  "last_train_matches": 1069,
+  "last_train_date": "2026-08-10",
+  "last_train_matches": 1140,
   "last_train_log_loss": null,
-  "model_version": 2,
+  "model_version": 3,
   "recent_predictions": [],
   "metrics": {
-    "ensemble_log_loss": 0.9928,
-    "ensemble_brier": 0.5887,
-    "ensemble_rps": 0.1997,
-    "ensemble_accuracy": 0.519,
-    "ensemble_oof_matches": 869,
+    "ensemble_log_loss": 0.9955,
+    "ensemble_brier": 0.5907,
+    "ensemble_rps": 0.2002,
+    "ensemble_accuracy": 0.5106,
+    "ensemble_oof_matches": 940,
     "ensemble_weights": {
-      "dixon_coles": 0.1074,
-      "bivariate_poisson": 0.6293,
-      "xg_dixon_coles": 0.0,
-      "feature_poisson": 0.2633
+      "dixon_coles": 0.5899,
+      "bivariate_poisson": 0.1358,
+      "xg_dixon_coles": 0.055,
+      "feature_poisson": 0.2193
     },
-    "total_matches": 1069,
+    "total_matches": 1140,
     "n_teams": 25
   }
 }
