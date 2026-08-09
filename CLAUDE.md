@@ -1,14 +1,19 @@
 # Premier League Match Prediction — CLAUDE.md
 
 ## Project Overview
-Production-grade soccer match prediction app: FBRef + Understat scraping →
-Dixon-Coles Poisson model → FastAPI/Streamlit web interface.
+Premier League match prediction: FBRef + Understat scraping → Poisson family models
+(Dixon-Coles, bivariate, xG-blended, feature GLM) blended by a stacked ensemble →
+FastAPI backend serving a static HTML dashboard. The whole pipeline runs unattended
+every Monday via GitHub Actions.
 
 ## Architecture
 - `scrapers/`        — Data fetching (FBRef, Understat) via ScraperAPI
 - `processors/`      — Entity resolution, schema normalization, feature engineering
 - `models/`          — Dixon-Coles model (Phase 2)
-- `app/`             — FastAPI backend + Streamlit UI (Phase 3)
+- `app/`             — FastAPI backend
+- `frontend/`        — static HTML dashboard (no build step, no Streamlit)
+- `quality.py`       — data quality gate; runs between processing and training
+- `tests/`           — pytest suite; runs in CI before the pipeline
 - `data/raw/`        — Raw per-source CSVs (never edit manually)
 - `data/processed/`  — Merged/feature-engineered Parquet files
 - `logs/`            — Rotating log files from pipeline runs
@@ -31,14 +36,27 @@ Key columns in `data/processed/merged.parquet`:
 
 ## Running the Pipeline
 ```bash
-pip install -r requirements.txt
-cp .env.example .env          # Add your SCRAPER_API_KEY
-python main.py --all           # Full scrape + process pipeline
-python main.py --scrape        # Scrape only (saves raw CSVs)
-python main.py --process       # Process existing raw data (merge + features)
+pip install -r requirements-dev.txt   # requirements.txt + pytest
+cp .env.example .env                  # Add your SCRAPER_API_KEY
+pytest -q                             # ~4s; run before touching anything
+python main.py --auto                 # what the weekly job runs
+python main.py --scrape               # Scrape only (saves raw CSVs)
+python main.py --process              # Process existing raw data (merge + features)
 ```
 
-## Phase Roadmap
-- Phase 1 (current): Scraper + data pipeline
-- Phase 2: Dixon-Coles Poisson model with rho (draw inflation) and xi (time decay)
-- Phase 3: FastAPI + Streamlit web dashboard with 1X2 probs and xG heatmaps
+## Exit codes (the workflow reads these)
+- `0` nothing changed · `2` new data · `3` retrained — all fine, run stays green
+- `4` the data quality gate rejected the scrape — nothing trained, nothing committed
+- `1` crash
+
+## Things that are easy to break
+- **Never remove the `.shift(1)` in `feature_engineer.py`.** Rolling features would then
+  contain the match they describe, every metric would improve, and nothing would look
+  wrong. `tests/test_feature_engineer.py` is the guard.
+- **Team names must resolve through `EntityResolver` before any merge.** A wrong resolve
+  gives one club another club's history with the row count still correct.
+- **Keep module-level work out of scripts.** `scripts/verify_task3b_fix.py` once ran its
+  whole body at import and cost pytest 28 seconds per collection.
+- **The ensemble weights are not identifiable.** The four base models correlate 0.97–0.998,
+  so the log-loss surface is nearly flat and repeated fits land on different corners.
+  Do not read the weights as a ranking of model quality.
