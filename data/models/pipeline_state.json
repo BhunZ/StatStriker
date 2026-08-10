@@ -4,7 +4,7 @@
   "last_train_date": "2026-08-10",
   "last_train_matches": 1140,
   "last_train_log_loss": null,
-  "model_version": 5,
+  "model_version": 6,
   "recent_predictions": [],
   "metrics": {
     "ensemble_log_loss": 0.989,
@@ -13,9 +13,9 @@
     "ensemble_accuracy": 0.516,
     "ensemble_oof_matches": 940,
     "ensemble_weights": {
-      "dixon_coles": 0.7069,
-      "feature_poisson": 0.148,
-      "gradient_boost": 0.1451
+      "dixon_coles": 0.7067,
+      "feature_poisson": 0.1483,
+      "gradient_boost": 0.145
     },
     "total_matches": 1140,
     "n_teams": 25
