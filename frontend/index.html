@@ -1588,8 +1588,8 @@
     <!-- Hero -->
     <div class="hero">
       <div class="hero-subtitle">Premier League Prediction Engine</div>
-      <h1><span class="gradient-text">Predict</span> Matches<br>With 5-Tier AI Models</h1>
-      <div class="hero-desc">Dixon-Coles, Bivariate Poisson, xG models, Feature GLM and Stacked Ensemble working together.</div>
+      <h1><span class="gradient-text">Predict</span> Matches<br>With A Stacked Model Ensemble</h1>
+      <div class="hero-desc">Dixon-Coles, a Feature Poisson GLM and gradient-boosted trees, blended by a stacked ensemble.</div>
       <div class="hero-stats-row">
         <div class="hero-stat">
           <div class="stat-number" id="statMatches" data-target="0">--</div>
@@ -1780,7 +1780,7 @@
         <div class="pipeline-step">
           <div class="step-icon">&#129504;</div>
           <div class="step-title">Statistical Modeling</div>
-          <div class="step-desc">5-tier ensemble approach that outperforms any individual model across temporal cross-validation</div>
+          <div class="step-desc">Three complementary models blended into one, chosen for disagreeing with each other rather than for being individually best</div>
         </div>
         <div class="pipeline-arrow">&#10132;</div>
         <div class="pipeline-step">
@@ -1797,6 +1797,10 @@
       <!-- Left: Model Tiers -->
       <div class="glass-card no-anim">
         <div class="section-title">Prediction Models</div>
+        <p style="font-size:12px;color:#6b7280;margin:4px 0 0">
+          Tiers 2 and 3 are missing on purpose. Both are Poisson variants that agreed with
+          Dixon-Coles almost exactly, so blending them added cost and no information.
+        </p>
         <div class="method-cards" style="margin-top:12px">
           <div class="method-card">
             <div class="tier-badge">TIER 1</div>
@@ -1804,24 +1808,19 @@
             <p>Classic Poisson model enhanced with attack/defense ratings per team and a rho correction for low-scoring draws. Time-weighted to emphasize recent form.</p>
           </div>
           <div class="method-card">
-            <div class="tier-badge">TIER 2</div>
-            <h3>Bivariate Poisson</h3>
-            <p>Models correlated goal counts between teams using a shared covariance parameter, capturing the tendency for matches to be jointly high or low scoring.</p>
-          </div>
-          <div class="method-card">
-            <div class="tier-badge">TIER 3</div>
-            <h3>xG-Dixon-Coles</h3>
-            <p>Replaces actual goals with expected goals (xG) from Understat, removing noise from lucky/unlucky finishes and measuring true chance creation.</p>
-          </div>
-          <div class="method-card">
             <div class="tier-badge">TIER 4</div>
             <h3>Feature Poisson GLM</h3>
             <p>Generalized linear model with 8 curated feature stems: rolling xG, xPts, xG overperformance, goalkeeper save rate, goals-against rate, possession style, and points-per-match as predictors alongside team attack/defense ratings.</p>
           </div>
           <div class="method-card">
-            <div class="tier-badge">TIER 5 &#8212; ENSEMBLE</div>
+            <div class="tier-badge">TIER 5</div>
+            <h3>Gradient Boost</h3>
+            <p>The only model here that never counts goals. Boosted trees map rolling form straight to win/draw/loss, so it can use interactions the Poisson likelihood cannot express — and it is wrong in different places, which is what makes the blend worth having.</p>
+          </div>
+          <div class="method-card">
+            <div class="tier-badge">TIER 6 &#8212; ENSEMBLE</div>
             <h3>Stacked Ensemble</h3>
-            <p>Weighted combination of all four models, optimized to minimize log-loss on temporal cross-validation folds. The final prediction used for all outputs.</p>
+            <p>Weighted combination of the three base models, optimized to minimize log-loss on temporal cross-validation folds. The final prediction used for all outputs.</p>
           </div>
         </div>
       </div>
@@ -1906,7 +1905,7 @@
         <div class="developer-info">
           <h3>Nguy&#7877;n &#272;&#7913;c B&#7843;o H&#432;ng</h3>
           <div class="developer-title">Data Engineering & ML</div>
-          <p class="developer-bio">Focused on building scalable ETL pipelines and predictive ML systems. StatStriker demonstrates end-to-end ownership: automated web scraping, entity resolution, multi-source data fusion, 5-tier Poisson ensemble modeling, and a real-time prediction API — all deployed via CI/CD.</p>
+          <p class="developer-bio">Focused on building scalable ETL pipelines and predictive ML systems. StatStriker demonstrates end-to-end ownership: automated web scraping, entity resolution, multi-source data fusion, stacked ensemble modeling, and a real-time prediction API — all deployed via CI/CD.</p>
         </div>
         <div class="developer-links">
           <a href="https://www.linkedin.com/in/bihun315" target="_blank" rel="noopener" class="social-btn">
@@ -2250,17 +2249,23 @@ const API = window.location.hostname === 'localhost' || window.location.hostname
 const MODEL_NAMES = {
   ensemble: 'Ensemble (Stacked)',
   dixon_coles: 'Dixon-Coles',
+  feature_poisson: 'Feature Poisson GLM',
+  gradient_boost: 'Gradient Boost',
+  // Not in the shipped blend, but still fittable via `--tiers`. Every list here is
+  // filtered against what the API actually returned, so an absent model just does not
+  // render — a name may be listed without the model existing, but a model that is NOT
+  // listed becomes invisible on the dashboard however well it is serving.
   bivariate_poisson: 'Bivariate Poisson',
   xg_dixon_coles: 'xG-Dixon-Coles',
-  feature_poisson: 'Feature Poisson GLM',
 };
-const MODEL_ORDER = ['ensemble','dixon_coles','bivariate_poisson','xg_dixon_coles','feature_poisson'];
+const MODEL_ORDER = ['ensemble','dixon_coles','feature_poisson','gradient_boost','bivariate_poisson','xg_dixon_coles'];
 const MODEL_COLORS = {
   ensemble: '#10b981',
   dixon_coles: '#06b6d4',
+  feature_poisson: '#ec4899',
+  gradient_boost: '#f97316',
   bivariate_poisson: '#8b5cf6',
   xg_dixon_coles: '#f59e0b',
-  feature_poisson: '#ec4899',
 };
 
 const FALLBACK_TEAMS = ["Arsenal","Aston Villa","Bournemouth","Brentford","Brighton","Burnley","Chelsea","Crystal Palace","Everton","Fulham","Ipswich Town","Leeds United","Leicester City","Liverpool","Luton Town","Manchester City","Manchester United","Newcastle United","Nottingham Forest","Sheffield United","Southampton","Sunderland","Tottenham","West Ham","Wolverhampton"];

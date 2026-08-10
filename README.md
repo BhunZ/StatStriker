@@ -20,32 +20,34 @@
 
 ## Overview
 
-StatStriker is a production-grade soccer match prediction system that scrapes real match data from FBRef and Understat, engineers predictive features, trains a 6-tier ensemble of statistical and machine-learning models, and serves predictions through an interactive web dashboard.
+StatStriker is a production-grade soccer match prediction system that scrapes real match data from FBRef and Understat, engineers predictive features, blends three complementary models into a stacked ensemble, and serves predictions through an interactive web dashboard.
 
 The entire pipeline — from data collection to model retraining — runs automatically every week via GitHub Actions.
 
 ## Features
 
 - **Live Match Predictions** — Select any two Premier League teams and get win/draw/loss probabilities with scoreline distributions
-- **6-Tier Model Ensemble** — From classic Dixon-Coles to xG-augmented Poisson GLMs and a gradient-boosted classifier, combined via learned stacking weights
+- **Three-Model Ensemble** — Dixon-Coles, a feature Poisson GLM and a gradient-boosted classifier, combined via learned stacking weights
 - **Team Analytics** — Season stats, goal difference charts, xG trends, home/away splits, and form streaks
 - **Upcoming Fixtures** — Live fixture data from the Fantasy Premier League API with one-click predictions
 - **Automated Pipeline** — Weekly scraping, processing, and retraining via GitHub Actions with smart change detection
 
 ## Model Architecture
 
-| Tier | Model | Description |
-|------|-------|-------------|
-| 1 | **Dixon-Coles** | Independent Poisson with rho correction for low-score draws and exponential time decay (Dixon & Coles, 1997) |
-| 2 | **Bivariate Poisson** | Shared latent variable lambda_3 captures goal correlation across all scorelines (Karlis & Ntzoufras, 2003) |
-| 3 | **xG Dixon-Coles** | Fits on a grid-searched blend of xG and actual goals for smoother, lower-variance attack/defense parameters |
-| 4 | **Feature Poisson GLM** | Adds rolling form features (PPDA, xG overperformance, prior-season stats) as log-linear covariates with L2 regularization |
-| 5 | **Gradient Boost** | Discriminative classifier over rolling form features — the one tier that never models goals, mapping form straight to 1X2 and calibrated by shrinkage towards the base rate |
-| 6 | **Stacked Ensemble** | Softmax-weighted convex combination of Tiers 1, 4 and 5, trained on out-of-fold temporal CV predictions |
+Five base models are implemented. **Three of them are blended** — an ensemble is only worth its cost when its members disagree, and the other two did not.
+
+| Tier | Model | In blend | Description |
+|------|-------|----------|-------------|
+| 1 | **Dixon-Coles** | yes | Independent Poisson with rho correction for low-score draws and exponential time decay (Dixon & Coles, 1997) |
+| 2 | **Bivariate Poisson** | no | Shared latent variable lambda_3 captures goal correlation across all scorelines (Karlis & Ntzoufras, 2003) |
+| 3 | **xG Dixon-Coles** | no | Fits on a grid-searched blend of xG and actual goals for smoother, lower-variance attack/defense parameters |
+| 4 | **Feature Poisson GLM** | yes | Adds rolling form features (PPDA, xG overperformance, prior-season stats) as log-linear covariates with L2 regularization |
+| 5 | **Gradient Boost** | yes | Discriminative classifier over rolling form features — the one tier that never models goals, mapping form straight to 1X2 and calibrated by shrinkage towards the base rate |
+| 6 | **Stacked Ensemble** | — | Softmax-weighted convex combination of Tiers 1, 4 and 5, trained on out-of-fold temporal CV predictions |
 
 All models are evaluated using **Ranked Probability Score (RPS)** via expanding-window temporal cross-validation — no data leakage, no shuffling.
 
-Tiers 2 and 3 ship with the project and can still be fitted or compared via `--tiers`, but they are not part of the blend: out of fold they track Dixon-Coles too closely to add anything to it. An ensemble is only worth its cost when its members disagree.
+Tiers 2 and 3 are kept and can still be fitted or compared with `--tiers`, but out of fold they track Dixon-Coles closely enough to be the same model written twice. Every subset of the five was scored on the same out-of-fold matches before the two were dropped, and dropping them cost nothing measurable.
 
 ## Project Structure
 

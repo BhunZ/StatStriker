@@ -170,7 +170,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="StatStriker API",
-    description="Premier League match prediction using 5-tier Poisson models",
+    description="Premier League match prediction from a stacked ensemble of match models",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -182,6 +182,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception(request, exc: Exception):
+    """Answer in JSON even when something unexpected breaks.
+
+    Endpoints catch the errors they expect and turn them into 4xx. Anything else used to
+    fall through to Starlette's default 500, whose body is the bare string
+    "Internal Server Error" — and the dashboard calls `.json()` on every response, so an
+    unhandled error reached the user as `Unexpected token 'I'` instead of anything about
+    what actually failed.
+
+    The status code is unchanged; only the shape of the body is. The exception type and
+    message go to the client because this API serves a public read-only dashboard with no
+    accounts or user data, and a name like `KeyError: 'gradient_boost'` is the difference
+    between a five-minute fix and an afternoon. The full traceback goes to the log only.
+    """
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {exc}"},
+    )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────

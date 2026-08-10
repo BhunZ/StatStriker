@@ -1,0 +1,90 @@
+"""Two ways the dashboard broke without the API being wrong.
+
+**The error body was not JSON.** Endpoints catch the errors they expect and return 4xx.
+Anything else fell through to Starlette's default 500, whose body is the bare string
+"Internal Server Error" — and every fetch in `index.html` calls `.json()` on the response.
+So a server-side fault reached the user as `Unexpected token 'I', "Internal S"... is not
+valid JSON`: a message that says nothing about what failed and points at the wrong layer.
+
+**A served model was invisible.** `MODEL_ORDER` in the dashboard is filtered against what
+the API returned, so listing a model that no longer exists is harmless. The reverse is not:
+`gradient_boost` shipped, served correctly, appeared in `/predict`, and never once rendered,
+because nothing listed it. There was no error anywhere to notice.
+"""
+
+import re
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+import app.api as api
+from models.predict import ENSEMBLE_TIERS, _TIER_FACTORIES
+
+FRONTEND = Path(__file__).resolve().parents[1] / "frontend" / "index.html"
+
+
+@pytest.fixture
+def client():
+    """A client with the lifespan run, so the models are actually loaded."""
+    with TestClient(api.app, raise_server_exceptions=False) as c:
+        yield c
+
+
+class _Boom:
+    """Stands in for the predictor and fails the way a real bug would."""
+
+    _models = {"dixon_coles": None}
+
+    def predict(self, *args, **kwargs):
+        raise KeyError("gradient_boost")
+
+
+# --- the error body ------------------------------------------------------------------
+
+def test_an_unexpected_error_still_returns_json(client, monkeypatch):
+    monkeypatch.setattr(api, "_predictor", _Boom())
+    response = client.get("/predict/Arsenal/Chelsea")
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/json")
+    response.json()          # the regression: this used to raise
+
+
+def test_the_error_body_names_what_went_wrong(client, monkeypatch):
+    """`{"detail": "Internal Server Error"}` would satisfy the test above and still leave
+    nobody any wiser."""
+    monkeypatch.setattr(api, "_predictor", _Boom())
+    detail = client.get("/predict/Arsenal/Chelsea").json()["detail"]
+
+    assert "KeyError" in detail and "gradient_boost" in detail
+
+
+def test_expected_failures_are_still_4xx_not_500(client):
+    """The catch-all must not swallow the deliberate ones."""
+    assert client.get("/predict/Arsenal/Arsenal").status_code == 400
+    assert client.get("/predict/Not A Real Club/Chelsea").status_code == 404
+
+
+# --- the dashboard's model list ------------------------------------------------------
+
+def _listed_in_dashboard(const: str) -> set[str]:
+    html = FRONTEND.read_text(encoding="utf-8")
+    block = re.search(rf"const {const}\s*=\s*([\[{{].*?[\]}}]);", html, re.S)
+    assert block, f"{const} not found in index.html"
+    return set(re.findall(r"['\"]?(\w+)['\"]?\s*[:,\]]", block.group(1))) - {""}
+
+
+@pytest.fixture
+def shipped_models() -> set[str]:
+    return {_TIER_FACTORIES[t]().name for t in ENSEMBLE_TIERS} | {"ensemble"}
+
+
+@pytest.mark.parametrize("const", ["MODEL_ORDER", "MODEL_NAMES", "MODEL_COLORS"])
+def test_the_dashboard_lists_every_model_that_ships(const, shipped_models):
+    missing = shipped_models - _listed_in_dashboard(const)
+    assert not missing, f"served but never rendered — {const} is missing {sorted(missing)}"
+
+
+def test_the_api_serves_exactly_the_models_that_ship(client, shipped_models):
+    assert set(client.get("/predict/Arsenal/Chelsea").json()["tiers"]) == shipped_models
