@@ -1925,12 +1925,36 @@
     <div class="glass-card no-anim" style="margin-top:20px">
       <div class="section-title">Version History</div>
       <p style="font-size:12px;color:#6b7280;margin:4px 0 20px">
-        Five major milestones &mdash; from the first working pipeline to a fully audited 5-tier ensemble.
+        Five major milestones &mdash; from the first working pipeline to a tested, gated ensemble
+        that keeps only the models that disagree.
       </p>
       <div class="version-rail">
 
-        <!-- v2.0 — current -->
+        <!-- v2.1 — current -->
         <div class="version-entry is-current">
+          <div class="version-node"></div>
+          <div class="version-card">
+            <div class="version-header">
+              <span class="version-tag">v2.1</span>
+              <span class="version-date">August 10, 2026</span>
+            </div>
+            <h3 class="version-title">Tested, Gated, and Cut Down</h3>
+            <ul class="version-desc" style="padding-left:16px;margin:0;display:flex;flex-direction:column;gap:4px">
+              <li>First test suite &mdash; 90 tests, run in CI before the pipeline is allowed to touch anything</li>
+              <li>Data quality gate rejects a bad scrape before training, instead of after</li>
+              <li>Tier 4 was never receiving its own features and had quietly become a plain Poisson</li>
+              <li>New gradient-boosted tier &mdash; the first member that is not a Poisson model</li>
+              <li>Blend cut from five models to three; the two dropped ones only echoed Dixon-Coles</li>
+            </ul>
+            <div class="version-tech">
+              <span class="tech-badge">ML Model</span>
+              <span class="tech-badge">Automation</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- v2.0 -->
+        <div class="version-entry">
           <div class="version-node"></div>
           <div class="version-card">
             <div class="version-header">
@@ -2303,7 +2327,7 @@ async function init() {
     // Surface data freshness in footer
     try {
       const p = status.pipeline;
-      const fmt = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
+      const fmt = d => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : null;
       const parts = [];
       if (p.last_scrape_date) parts.push('Data: ' + fmt(p.last_scrape_date));
       if (p.last_train_date) parts.push('Model: ' + fmt(p.last_train_date));

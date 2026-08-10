@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Premier League Match Prediction Engine</strong><br>
-  Scraping &rarr; Feature Engineering &rarr; Dixon-Coles Poisson Models &rarr; Web Dashboard
+  Scraping &rarr; Feature Engineering &rarr; Stacked Match Models &rarr; Web Dashboard
 </p>
 
 <p align="center">
@@ -20,14 +20,14 @@
 
 ## Overview
 
-StatStriker is a production-grade soccer match prediction system that scrapes real match data from FBRef and Understat, engineers predictive features, trains a 5-tier ensemble of Poisson regression models, and serves predictions through an interactive web dashboard.
+StatStriker is a production-grade soccer match prediction system that scrapes real match data from FBRef and Understat, engineers predictive features, trains a 6-tier ensemble of statistical and machine-learning models, and serves predictions through an interactive web dashboard.
 
 The entire pipeline — from data collection to model retraining — runs automatically every week via GitHub Actions.
 
 ## Features
 
 - **Live Match Predictions** — Select any two Premier League teams and get win/draw/loss probabilities with scoreline distributions
-- **5-Tier Model Ensemble** — From classic Dixon-Coles to xG-augmented and feature-rich Poisson GLMs, combined via learned stacking weights
+- **6-Tier Model Ensemble** — From classic Dixon-Coles to xG-augmented Poisson GLMs and a gradient-boosted classifier, combined via learned stacking weights
 - **Team Analytics** — Season stats, goal difference charts, xG trends, home/away splits, and form streaks
 - **Upcoming Fixtures** — Live fixture data from the Fantasy Premier League API with one-click predictions
 - **Automated Pipeline** — Weekly scraping, processing, and retraining via GitHub Actions with smart change detection
@@ -40,9 +40,12 @@ The entire pipeline — from data collection to model retraining — runs automa
 | 2 | **Bivariate Poisson** | Shared latent variable lambda_3 captures goal correlation across all scorelines (Karlis & Ntzoufras, 2003) |
 | 3 | **xG Dixon-Coles** | Fits on a grid-searched blend of xG and actual goals for smoother, lower-variance attack/defense parameters |
 | 4 | **Feature Poisson GLM** | Adds rolling form features (PPDA, xG overperformance, prior-season stats) as log-linear covariates with L2 regularization |
-| 5 | **Stacked Ensemble** | Softmax-weighted convex combination of Tiers 1-4, trained on out-of-fold temporal CV predictions |
+| 5 | **Gradient Boost** | Discriminative classifier over rolling form features — the one tier that never models goals, mapping form straight to 1X2 and calibrated by shrinkage towards the base rate |
+| 6 | **Stacked Ensemble** | Softmax-weighted convex combination of Tiers 1, 4 and 5, trained on out-of-fold temporal CV predictions |
 
 All models are evaluated using **Ranked Probability Score (RPS)** via expanding-window temporal cross-validation — no data leakage, no shuffling.
+
+Tiers 2 and 3 ship with the project and can still be fitted or compared via `--tiers`, but they are not part of the blend: out of fold they track Dixon-Coles too closely to add anything to it. An ensemble is only worth its cost when its members disagree.
 
 ## Project Structure
 
@@ -61,7 +64,8 @@ StatStriker/
 │   ├── bivariate_poisson.py # Tier 2: Bivariate Poisson
 │   ├── xg_dixon_coles.py   # Tier 3: xG-augmented
 │   ├── feature_poisson.py  # Tier 4: Feature GLM
-│   ├── ensemble.py         # Tier 5: Stacked ensemble
+│   ├── gradient_boost.py   # Tier 5: Gradient-boosted classifier
+│   ├── ensemble.py         # Tier 6: Stacked ensemble
 │   ├── evaluation.py       # Temporal CV + RPS scoring
 │   └── predict.py          # Unified prediction interface
 ├── app/

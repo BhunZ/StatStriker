@@ -42,6 +42,19 @@ _TIER_FACTORIES: dict[int, Callable[[], BaseMatchModel]] = {
     5: GradientBoostModel,
 }
 
+#: The tiers the shipped ensemble blends — one of each kind, not one of each idea.
+#:
+#: Every subset of the five was scored on the same 940 out-of-fold matches. These three
+#: match all five to within 0.0002 log-loss, and a 4000-sample bootstrap puts that
+#: difference at [-0.0010, +0.0008]: indistinguishable. Two were dropped because they add
+#: nothing, not because there is evidence they are worse.
+#:
+#:   * bivariate_poisson correlates 0.997 with dixon_coles — one model written twice.
+#:   * xg_dixon_coles took 0.044 of the weight and appears in no leading subset.
+#:
+#: Both remain in _TIER_FACTORIES so `--tiers 2 3` can still fit and compare them.
+ENSEMBLE_TIERS: list[int] = [1, 4, 5]
+
 
 class MatchPredictor:
     """
@@ -72,11 +85,13 @@ class MatchPredictor:
 
     def fit_all(self, tiers: list[int] | None = None) -> None:
         """
-        Fit specified tiers (default: all 1-6).
+        Fit specified tiers (default: the shipped ensemble and its bases).
 
-        Tier 6 (ensemble) automatically wraps Tiers 1-5 as base models.
+        Tier 6 (the ensemble) wraps ENSEMBLE_TIERS. Pass `tiers` explicitly to fit the
+        models that are not in the shipped blend — e.g. `[1, 2, 3, 4, 5]` to compare all
+        five bases.
         """
-        tiers = tiers or [1, 2, 3, 4, 5, 6]
+        tiers = tiers or [*ENSEMBLE_TIERS, 6]
 
         for tier in tiers:
             if tier == 6:
@@ -96,10 +111,10 @@ class MatchPredictor:
     def _fit_ensemble(self) -> None:
         """Fit the ensemble using fresh instances of every base tier."""
         logger.info("=== Fitting Tier 6: ensemble ===")
+        # One Poisson core, one form-driven Poisson, one non-Poisson classifier — see
+        # ENSEMBLE_TIERS for why the other two were dropped.
         base_models = [
             DixonColesModel(half_life_years=1.5),
-            BivariatePoisson(half_life_years=1.5),
-            XGDixonColes(half_life_years=1.5),
             FeaturePoisson(half_life_years=1.5, symmetric_mode=True),
             GradientBoostModel(),
         ]

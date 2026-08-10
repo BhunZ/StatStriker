@@ -1,15 +1,19 @@
 # Premier League Match Prediction — CLAUDE.md
 
 ## Project Overview
-Premier League match prediction: FBRef + Understat scraping → Poisson family models
-(Dixon-Coles, bivariate, xG-blended, feature GLM) blended by a stacked ensemble →
-FastAPI backend serving a static HTML dashboard. The whole pipeline runs unattended
-every Monday via GitHub Actions.
+Premier League match prediction: FBRef + Understat scraping → match models blended by a
+stacked ensemble → FastAPI backend serving a static HTML dashboard. The whole pipeline runs
+unattended every Monday via GitHub Actions.
+
+Five base models are implemented; the shipped blend uses three — Dixon-Coles, the feature
+Poisson GLM, and a gradient-boosted classifier (`models/predict.py:ENSEMBLE_TIERS`).
+Bivariate Poisson and xG Dixon-Coles remain fittable via `--tiers` but track Dixon-Coles
+too closely to earn a place in the blend.
 
 ## Architecture
 - `scrapers/`        — Data fetching (FBRef, Understat) via ScraperAPI
 - `processors/`      — Entity resolution, schema normalization, feature engineering
-- `models/`          — Dixon-Coles model (Phase 2)
+- `models/`          — Base models, the stacked ensemble, and temporal CV evaluation
 - `app/`             — FastAPI backend
 - `frontend/`        — static HTML dashboard (no build step, no Streamlit)
 - `quality.py`       — data quality gate; runs between processing and training
@@ -57,6 +61,15 @@ python main.py --process              # Process existing raw data (merge + featu
   gives one club another club's history with the row count still correct.
 - **Keep module-level work out of scripts.** `scripts/verify_task3b_fix.py` once ran its
   whole body at import and cost pytest 28 seconds per collection.
-- **The ensemble weights are not identifiable.** The four base models correlate 0.97–0.998,
-  so the log-loss surface is nearly flat and repeated fits land on different corners.
-  Do not read the weights as a ranking of model quality.
+- **The ensemble weights are only just identifiable.** Near-identical base models make the
+  log-loss surface almost flat, and repeated fits used to land on different corners — a
+  softmax even reported an exact 0.0 by underflow. `WEIGHT_L2` in `models/ensemble.py` is
+  the tiebreak that stops it. Do not remove it, and do not read the weights as a ranking of
+  model quality. `tests/test_ensemble_weights.py` is the guard.
+- **`FeaturePoisson` needs its features passed in.** It reads covariates from
+  `features_home` / `features_away`; for a long time nothing passed them and it silently
+  degraded into a plain Poisson — no error, plausible-looking output.
+  `tests/test_feature_poisson_wiring.py` is the guard.
+- **`ctx_*` columns are prior-season, not current-season.** They are constant within a
+  (team, season), which looks like leakage and is not — `_load_team_context` shifts the
+  season key. Do not "fix" it.
