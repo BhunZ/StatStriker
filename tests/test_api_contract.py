@@ -126,8 +126,38 @@ def test_health_is_degraded_not_ok_when_nothing_loaded(client, monkeypatch):
 
 
 def test_health_reports_a_partial_load(client, monkeypatch):
-    """Models loaded, but not all of them — still degraded, and it says which failed."""
+    """The production case: two of three models loaded, every request got a real answer,
+    and health said "ok". Serving a subset is not health."""
     monkeypatch.setattr(api._predictor, "load_failures_",
                         {"gradient_boost.pkl": "AttributeError: nope"}, raising=False)
     body = client.get("/api/health").json()
+
+    assert body["status"] == "degraded"
     assert body["model_load_failures"] == {"gradient_boost.pkl": "AttributeError: nope"}
+
+
+def test_health_reports_the_versions_it_is_running(client):
+    """The outage was a version mismatch between the machine that pickled the models and
+    the machine that unpickled them, and nothing served said what either was running."""
+    runtime = client.get("/api/health").json()["runtime"]
+
+    assert set(runtime) == {"python", "scikit_learn", "numpy", "pandas"}
+    assert all(re.match(r"^\d+\.\d+", v) for v in runtime.values())
+
+
+def test_the_pinned_scikit_learn_matches_the_one_that_pickles_models():
+    """requirements.txt bounds scikit-learn to a minor line. If the environment that
+    trains drifts outside it, the artifacts it commits will not load where they are
+    served — which is exactly what happened, silently."""
+    import sklearn
+    from packaging.requirements import Requirement
+
+    line = next(
+        l for l in (Path(__file__).resolve().parents[1] / "requirements.txt")
+        .read_text(encoding="utf-8").splitlines()
+        if l.strip().startswith("scikit-learn")
+    )
+    assert sklearn.__version__ in Requirement(line.strip()).specifier, (
+        f"training on scikit-learn {sklearn.__version__}, which requirements.txt excludes "
+        f"({line.strip()}) — models pickled here will not load in the deployed API"
+    )

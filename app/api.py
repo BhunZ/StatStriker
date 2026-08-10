@@ -20,12 +20,14 @@ Run
 
 import json
 import logging
+import platform
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
 import numpy as np
 import pandas as pd
+import sklearn
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -238,18 +240,31 @@ async def health():
     Reports `degraded` — not `ok` — when startup could not load the models, and says why.
     A health endpoint that answers "ok" while serving nothing is worse than none at all.
     """
-    healthy = _predictor is not None and bool(_teams)
+    failures = getattr(_predictor, "load_failures_", {}) if _predictor else {}
+    # A partial load is not health. Serving two of three models is a real answer to every
+    # request and a wrong one to the question this endpoint is asked.
+    healthy = _predictor is not None and bool(_teams) and not failures
     body = {
         "status": "ok" if healthy else "degraded",
         "teams": len(_teams),
         "models": list(_predictor._models.keys()) if _predictor else [],
         "matches_trained_on": len(_df) if _df is not None else 0,
+        # The versions that are actually running. Model artifacts are pickled on one
+        # machine and unpickled on another, and when those disagree the failure is a
+        # ModuleNotFoundError deep inside a dependency with nothing pointing at the cause.
+        "runtime": {
+            "python": platform.python_version(),
+            "scikit_learn": sklearn.__version__,
+            "numpy": np.__version__,
+            "pandas": pd.__version__,
+        },
     }
-    failures = getattr(_predictor, "load_failures_", {}) if _predictor else {}
     if failures:
         body["model_load_failures"] = failures
     if not healthy:
-        body["error"] = _load_error or "models did not load; no exception was recorded"
+        body["error"] = _load_error or (
+            f"{len(failures)} model file(s) unreadable" if failures
+            else "models did not load; no exception was recorded")
     return body
 
 

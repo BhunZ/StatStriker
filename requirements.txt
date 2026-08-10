@@ -17,9 +17,20 @@ rapidfuzz>=3.10.0
 python-dotenv>=1.0.0
 
 # Modeling / optimization
-numpy>=2.0.0
+#
+# scikit-learn and numpy are pinned to a minor line, not left open. Trained models are
+# pickled on one machine and unpickled on another, and a scikit-learn estimator carries
+# references to that library's private modules. With `scikit-learn>=1.5.0` the server
+# resolved a different build from the one that wrote the file and both sklearn-bearing
+# pickles failed with `ModuleNotFoundError: No module named '_loss'` — an error that names
+# neither scikit-learn nor the version mismatch that caused it. The API served two of
+# three models for as long as nobody looked.
+#
+# Patch releases within a minor line keep the module layout, so the upper bound is the
+# next minor. Widen it only together with a retrain.
+numpy>=2.4,<3
 scipy>=1.14.0
-scikit-learn>=1.5.0
+scikit-learn>=1.8,<1.9
 
 # API
 fastapi>=0.115.0

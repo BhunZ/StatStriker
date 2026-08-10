@@ -1,3 +1,4 @@
 # Test-only dependencies. CI installs these on top of requirements.txt.
 -r requirements.txt
 pytest>=8.0
+packaging>=24.0   # version-range check in tests/test_api_contract.py
