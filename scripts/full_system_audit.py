@@ -25,9 +25,8 @@ from scipy.optimize import minimize as sp_minimize
 sys.path.insert(0, ".")
 
 from models.dixon_coles import DixonColesModel
-from models.bivariate_poisson import BivariatePoisson
-from models.xg_dixon_coles import XGDixonColes
 from models.feature_poisson import FeaturePoisson
+from models.gradient_boost import GradientBoostModel
 from models.evaluation import ModelEvaluator
 from models.config_models import PRED_MIN_PROB
 
@@ -38,14 +37,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────
-TIER_NAMES = {1: "DC (Tier 1)", 2: "BP (Tier 2)", 3: "xG-DC (Tier 3)", 4: "FP (Tier 4)"}
-TIER_SHORT = {1: "DC", 2: "BP", 3: "xG-DC", 4: "FP"}
+TIER_NAMES = {1: "DC (Tier 1)", 2: "FP (Tier 2)", 3: "GBM (Tier 3)"}
+TIER_SHORT = {1: "DC", 2: "FP", 3: "GBM"}
 
 TIER_CONFIGS = {
     1: lambda: DixonColesModel(),
-    2: lambda: BivariatePoisson(),
-    3: lambda: XGDixonColes(),
-    4: lambda: FeaturePoisson(symmetric_mode=True),
+    2: lambda: FeaturePoisson(symmetric_mode=True),
+    3: lambda: GradientBoostModel(),
 }
 
 

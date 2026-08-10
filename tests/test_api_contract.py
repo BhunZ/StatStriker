@@ -88,3 +88,46 @@ def test_the_dashboard_lists_every_model_that_ships(const, shipped_models):
 
 def test_the_api_serves_exactly_the_models_that_ship(client, shipped_models):
     assert set(client.get("/predict/Arsenal/Chelsea").json()["tiers"]) == shipped_models
+
+
+# --- surviving a bad pickle ----------------------------------------------------------
+
+def test_one_unreadable_pickle_does_not_take_down_the_others(tmp_path, matches):
+    """What actually happened in production: `load_models` looped over every .pkl and let
+    the first failure propagate, so a deployment served zero models and an empty team list
+    while three of the four files were perfectly readable.
+
+    The two pickles holding scikit-learn estimators are the fragile ones — an estimator
+    pickled under one version is not guaranteed to unpickle under another, and the machine
+    that trains is not the machine that serves.
+    """
+    from models.dixon_coles import DixonColesModel
+    from models.predict import MatchPredictor
+
+    DixonColesModel().fit(matches).save(tmp_path / "dixon_coles.pkl")
+    (tmp_path / "corrupt.pkl").write_bytes(b"not a pickle at all")
+
+    predictor = MatchPredictor.load_models(tmp_path, matches)
+
+    assert "dixon_coles" in predictor._models, "a readable model was lost to a broken one"
+    assert "corrupt.pkl" in predictor.load_failures_
+
+
+def test_health_is_degraded_not_ok_when_nothing_loaded(client, monkeypatch):
+    """`{"status": "ok"}` with zero models is the one answer a health check must never
+    give — it is what let a broken deployment look fine from the outside."""
+    monkeypatch.setattr(api, "_predictor", None)
+    monkeypatch.setattr(api, "_teams", [])
+    monkeypatch.setattr(api, "_load_error", "RuntimeError: boom")
+
+    body = client.get("/api/health").json()
+    assert body["status"] == "degraded"
+    assert "boom" in body["error"]
+
+
+def test_health_reports_a_partial_load(client, monkeypatch):
+    """Models loaded, but not all of them — still degraded, and it says which failed."""
+    monkeypatch.setattr(api._predictor, "load_failures_",
+                        {"gradient_boost.pkl": "AttributeError: nope"}, raising=False)
+    body = client.get("/api/health").json()
+    assert body["model_load_failures"] == {"gradient_boost.pkl": "AttributeError: nope"}

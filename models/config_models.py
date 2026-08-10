@@ -23,17 +23,7 @@ DC_PROMOTED_ATTACK: float = 0.85   # 15% below league-average scoring
 DC_PROMOTED_DEFENSE: float = 1.15  # 15% above league-average conceding
 
 # ---------------------------------------------------------------------------
-# Tier 2: Bivariate Poisson (Karlis & Ntzoufras 2003)
-# ---------------------------------------------------------------------------
-BP_INITIAL_LAMBDA3: float = 0.1  # correlation parameter starting value
-
-# ---------------------------------------------------------------------------
-# Tier 3: xG-Dixon-Coles
-# ---------------------------------------------------------------------------
-XG_BLEND_GRID: list[float] = [0.0, 0.3, 0.5, 0.7, 0.85, 1.0]
-
-# ---------------------------------------------------------------------------
-# Tier 4: Feature-augmented Poisson GLM
+# Tier 2: Feature-augmented Poisson GLM
 # ---------------------------------------------------------------------------
 # Grid for L2 regularization on the feature weights. The top end (10.0) is
 # what keeps ~40 features from overfitting on 1069 training matches.

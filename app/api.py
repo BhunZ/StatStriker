@@ -50,6 +50,13 @@ _pipeline_state: dict = {}
 _df: pd.DataFrame | None = None
 _upcoming_fixtures: list[dict] = []
 
+#: Why startup failed, if it did. Startup deliberately survives a load failure so the rest
+#: of the dashboard still works, but the reason then existed only in the server log — and
+#: `/api/health` went on answering "ok" with zero models loaded, which is the one case it
+#: exists to catch. A deployment served an empty team list for an unknown length of time
+#: because nothing on the outside said otherwise.
+_load_error: str | None = None
+
 FEATURES_PATH = ROOT_DIR / "data" / "processed" / "features.parquet"
 MODELS_DIR = ROOT_DIR / "data" / "models"
 STATE_PATH = MODELS_DIR / "pipeline_state.json"
@@ -156,11 +163,14 @@ def _fetch_upcoming_fixtures():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load models into memory on startup."""
+    global _load_error
     try:
         _load_models()
+        _load_error = None
         logger.info("API ready — %d teams, %d models", len(_teams), len(_predictor._models))
     except Exception as e:
-        logger.error("Failed to load models: %s — API will start in degraded mode", e)
+        _load_error = f"{type(e).__name__}: {e}"
+        logger.exception("Failed to load models — API will start in degraded mode")
     _fetch_upcoming_fixtures()
     yield
     logger.info("API shutting down")
@@ -223,13 +233,24 @@ def _resolve_team(name: str) -> str:
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 async def health():
-    """Health check."""
-    return {
-        "status": "ok",
+    """Health check.
+
+    Reports `degraded` — not `ok` — when startup could not load the models, and says why.
+    A health endpoint that answers "ok" while serving nothing is worse than none at all.
+    """
+    healthy = _predictor is not None and bool(_teams)
+    body = {
+        "status": "ok" if healthy else "degraded",
         "teams": len(_teams),
         "models": list(_predictor._models.keys()) if _predictor else [],
         "matches_trained_on": len(_df) if _df is not None else 0,
     }
+    failures = getattr(_predictor, "load_failures_", {}) if _predictor else {}
+    if failures:
+        body["model_load_failures"] = failures
+    if not healthy:
+        body["error"] = _load_error or "models did not load; no exception was recorded"
+    return body
 
 
 @app.get("/teams")

@@ -666,8 +666,7 @@
   }
   .agreement-dot[data-model="ensemble"] { background: #10b981; width: 14px; height: 14px; z-index: 2; }
   .agreement-dot[data-model="dixon_coles"] { background: #06b6d4; }
-  .agreement-dot[data-model="bivariate_poisson"] { background: #8b5cf6; }
-  .agreement-dot[data-model="xg_dixon_coles"] { background: #f59e0b; }
+  .agreement-dot[data-model="gradient_boost"] { background: #f97316; }
   .agreement-dot[data-model="feature_poisson"] { background: #ec4899; }
   .agreement-labels {
     display: flex;
@@ -1596,8 +1595,10 @@
           <div class="stat-label">Matches Trained</div>
         </div>
         <div class="hero-stat">
-          <div class="stat-number" data-target="5">5</div>
-          <div class="stat-label">Model Tiers</div>
+          <!-- Filled from the API. It was hardcoded to 5 and stayed 5 after the blend
+               was cut to three — a number nobody had to maintain, so nobody did. -->
+          <div class="stat-number" id="statModels" data-target="0">--</div>
+          <div class="stat-label">Models Blended</div>
         </div>
         <div class="hero-stat">
           <div class="stat-number" id="statLogLoss" data-target="0">--</div>
@@ -1798,8 +1799,9 @@
       <div class="glass-card no-anim">
         <div class="section-title">Prediction Models</div>
         <p style="font-size:12px;color:#6b7280;margin:4px 0 0">
-          Tiers 2 and 3 are missing on purpose. Both are Poisson variants that agreed with
-          Dixon-Coles almost exactly, so blending them added cost and no information.
+          A Bivariate Poisson and an xG-driven Dixon-Coles were also built and removed:
+          both agreed with Dixon-Coles almost exactly, so blending them added cost and no
+          information.
         </p>
         <div class="method-cards" style="margin-top:12px">
           <div class="method-card">
@@ -1808,17 +1810,17 @@
             <p>Classic Poisson model enhanced with attack/defense ratings per team and a rho correction for low-scoring draws. Time-weighted to emphasize recent form.</p>
           </div>
           <div class="method-card">
-            <div class="tier-badge">TIER 4</div>
+            <div class="tier-badge">TIER 2</div>
             <h3>Feature Poisson GLM</h3>
             <p>Generalized linear model with 8 curated feature stems: rolling xG, xPts, xG overperformance, goalkeeper save rate, goals-against rate, possession style, and points-per-match as predictors alongside team attack/defense ratings.</p>
           </div>
           <div class="method-card">
-            <div class="tier-badge">TIER 5</div>
+            <div class="tier-badge">TIER 3</div>
             <h3>Gradient Boost</h3>
             <p>The only model here that never counts goals. Boosted trees map rolling form straight to win/draw/loss, so it can use interactions the Poisson likelihood cannot express — and it is wrong in different places, which is what makes the blend worth having.</p>
           </div>
           <div class="method-card">
-            <div class="tier-badge">TIER 6 &#8212; ENSEMBLE</div>
+            <div class="tier-badge">TIER 4 &#8212; ENSEMBLE</div>
             <h3>Stacked Ensemble</h3>
             <p>Weighted combination of the three base models, optimized to minimize log-loss on temporal cross-validation folds. The final prediction used for all outputs.</p>
           </div>
@@ -2047,7 +2049,7 @@
 <footer>
   <div class="container">
     <div class="footer-inner">
-      <span>StatStriker &mdash; Dixon-Coles, Bivariate Poisson, xG-DC, Feature Poisson, Ensemble</span>
+      <span>StatStriker &mdash; Dixon-Coles, Feature Poisson, Gradient Boost, Ensemble</span>
       <span id="footerFreshness" style="font-size:11px;color:#4b5563"></span>
       <a href="https://github.com/BhunZ/StatStriker" target="_blank" rel="noopener">GitHub</a>
     </div>
@@ -2251,21 +2253,16 @@ const MODEL_NAMES = {
   dixon_coles: 'Dixon-Coles',
   feature_poisson: 'Feature Poisson GLM',
   gradient_boost: 'Gradient Boost',
-  // Not in the shipped blend, but still fittable via `--tiers`. Every list here is
-  // filtered against what the API actually returned, so an absent model just does not
-  // render — a name may be listed without the model existing, but a model that is NOT
-  // listed becomes invisible on the dashboard however well it is serving.
-  bivariate_poisson: 'Bivariate Poisson',
-  xg_dixon_coles: 'xG-Dixon-Coles',
 };
-const MODEL_ORDER = ['ensemble','dixon_coles','feature_poisson','gradient_boost','bivariate_poisson','xg_dixon_coles'];
+// Every list here is filtered against what the API returned, so naming a model that does
+// not exist is harmless — but a model that is NOT named becomes invisible on the dashboard
+// however well it is serving. tests/test_api_contract.py guards that direction.
+const MODEL_ORDER = ['ensemble','dixon_coles','feature_poisson','gradient_boost'];
 const MODEL_COLORS = {
   ensemble: '#10b981',
   dixon_coles: '#06b6d4',
   feature_poisson: '#ec4899',
   gradient_boost: '#f97316',
-  bivariate_poisson: '#8b5cf6',
-  xg_dixon_coles: '#f59e0b',
 };
 
 const FALLBACK_TEAMS = ["Arsenal","Aston Villa","Bournemouth","Brentford","Brighton","Burnley","Chelsea","Crystal Palace","Everton","Fulham","Ipswich Town","Leeds United","Leicester City","Liverpool","Luton Town","Manchester City","Manchester United","Newcastle United","Nottingham Forest","Sheffield United","Southampton","Sunderland","Tottenham","West Ham","Wolverhampton"];
@@ -2314,6 +2311,9 @@ async function init() {
     // Populate hero stats from API
     document.getElementById('statMatches').textContent = status.data.total_matches.toLocaleString();
     document.getElementById('statTeams').textContent = status.data.teams;
+    // The base models the ensemble actually blends — not the number of files on disk.
+    const blended = Object.keys(status.metrics?.ensemble_weights || {}).length;
+    document.getElementById('statModels').textContent = blended || '--';
 
     // Populate metrics from pipeline_state (dynamic after each retrain)
     const m = status.metrics || {};

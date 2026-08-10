@@ -17,8 +17,6 @@ import pandas as pd
 
 from .base import BaseMatchModel
 from .dixon_coles import DixonColesModel
-from .bivariate_poisson import BivariatePoisson
-from .xg_dixon_coles import XGDixonColes
 from .feature_poisson import FeaturePoisson
 from .gradient_boost import GradientBoostModel
 from .ensemble import EnsembleModel
@@ -27,33 +25,31 @@ from .evaluation import ModelEvaluator
 logger = logging.getLogger(__name__)
 
 # Tier number -> model factory (zero-arg callable returning a fitted-ready model).
-# Tier 4 uses symmetric_mode=True as the production default since 2026-04-11
-# pending the log-loss calibration fix tracked in Task 3b of
-# plans/piped-greeting-pretzel.md. Pass symmetric_mode=False for experiments.
+#
+# There were once five. Bivariate Poisson and xG Dixon-Coles were removed on 2026-08-10
+# after every subset of the five was scored on the same 940 out-of-fold matches: bivariate
+# correlated 0.997 with Dixon-Coles — the same model written twice — and xG Dixon-Coles
+# took 0.044 of the weight and appeared in no leading subset. Dropping both changed the
+# blend by 0.0002 log-loss, inside a bootstrap interval of [-0.0010, +0.0008].
+#
+# Tier 2 uses symmetric_mode=True as the production default since 2026-04-11 pending the
+# log-loss calibration fix in Task 3b. Pass symmetric_mode=False for experiments.
 _TIER_FACTORIES: dict[int, Callable[[], BaseMatchModel]] = {
     1: DixonColesModel,
-    2: BivariatePoisson,
-    3: XGDixonColes,
-    4: lambda: FeaturePoisson(symmetric_mode=True),
-    # Tier 5 is the only member that is not a Poisson variant. Tiers 1-4 correlate
-    # 0.69-0.997 out of fold; this one correlates 0.50-0.65 with them, which is what
-    # makes the blend worth computing rather than an expensive way to average four
-    # near-copies. See models/gradient_boost.py.
-    5: GradientBoostModel,
+    2: lambda: FeaturePoisson(symmetric_mode=True),
+    # Tier 3 is the only member that is not a Poisson variant. It correlates 0.50-0.65
+    # with the other two, where they correlate 0.69 with each other — being wrong in a
+    # different place is what makes a blend worth computing rather than an expensive way
+    # to average near-copies. See models/gradient_boost.py.
+    3: GradientBoostModel,
 }
 
-#: The tiers the shipped ensemble blends — one of each kind, not one of each idea.
-#:
-#: Every subset of the five was scored on the same 940 out-of-fold matches. These three
-#: match all five to within 0.0002 log-loss, and a 4000-sample bootstrap puts that
-#: difference at [-0.0010, +0.0008]: indistinguishable. Two were dropped because they add
-#: nothing, not because there is evidence they are worse.
-#:
-#:   * bivariate_poisson correlates 0.997 with dixon_coles — one model written twice.
-#:   * xg_dixon_coles took 0.044 of the weight and appears in no leading subset.
-#:
-#: Both remain in _TIER_FACTORIES so `--tiers 2 3` can still fit and compare them.
-ENSEMBLE_TIERS: list[int] = [1, 4, 5]
+#: The tiers the ensemble blends — one of each kind, not one of each idea.
+#: Tier 4 is the ensemble itself and is not listed here.
+ENSEMBLE_TIERS: list[int] = [1, 2, 3]
+
+#: The tier number reserved for the stacked ensemble, which wraps ENSEMBLE_TIERS.
+ENSEMBLE_TIER: int = 4
 
 
 class MatchPredictor:
@@ -71,6 +67,9 @@ class MatchPredictor:
         self._df["date"] = pd.to_datetime(self._df["date"])
         self._models: dict[str, BaseMatchModel] = {}
         self._evaluator = ModelEvaluator()
+        #: Pickle filename -> why it could not be read. Populated by `load_models`;
+        #: empty for a predictor built by fitting rather than loading.
+        self.load_failures_: dict[str, str] = {}
 
     @classmethod
     def from_parquet(cls, path: str | Path) -> "MatchPredictor":
@@ -87,14 +86,13 @@ class MatchPredictor:
         """
         Fit specified tiers (default: the shipped ensemble and its bases).
 
-        Tier 6 (the ensemble) wraps ENSEMBLE_TIERS. Pass `tiers` explicitly to fit the
-        models that are not in the shipped blend — e.g. `[1, 2, 3, 4, 5]` to compare all
-        five bases.
+        Tier 4 (the ensemble) wraps ENSEMBLE_TIERS. Pass `tiers` explicitly to fit a
+        subset — e.g. `[1]` for Dixon-Coles alone, with no ensemble.
         """
-        tiers = tiers or [*ENSEMBLE_TIERS, 6]
+        tiers = tiers or [*ENSEMBLE_TIERS, ENSEMBLE_TIER]
 
         for tier in tiers:
-            if tier == 6:
+            if tier == ENSEMBLE_TIER:
                 # Ensemble needs the base tiers fitted first
                 self._fit_ensemble()
                 continue
@@ -110,9 +108,9 @@ class MatchPredictor:
 
     def _fit_ensemble(self) -> None:
         """Fit the ensemble using fresh instances of every base tier."""
-        logger.info("=== Fitting Tier 6: ensemble ===")
+        logger.info("=== Fitting Tier %d: ensemble ===", ENSEMBLE_TIER)
         # One Poisson core, one form-driven Poisson, one non-Poisson classifier — see
-        # ENSEMBLE_TIERS for why the other two were dropped.
+        # _TIER_FACTORIES for why the other two were removed.
         base_models = [
             DixonColesModel(half_life_years=1.5),
             FeaturePoisson(half_life_years=1.5, symmetric_mode=True),
@@ -153,11 +151,9 @@ class MatchPredictor:
         if tier is not None:
             # Single model prediction
             if isinstance(tier, int):
-                name = _TIER_FACTORIES.get(tier, lambda: None)
-                if name is None:
-                    name = "ensemble" if tier == 6 else str(tier)
-                else:
-                    name = name().name
+                factory = _TIER_FACTORIES.get(tier)
+                name = factory().name if factory else (
+                    "ensemble" if tier == ENSEMBLE_TIER else str(tier))
             else:
                 name = tier
 
@@ -296,8 +292,20 @@ class MatchPredictor:
 
         predictor = cls(df)
         directory = Path(directory)
+        predictor.load_failures_ = {}
         for pkl_file in sorted(directory.glob("*.pkl")):
-            model = BaseMatchModel.load(pkl_file)
+            # One unreadable pickle used to take down every model with it. The two
+            # containing scikit-learn estimators are the fragile ones: an estimator
+            # pickled under one version of scikit-learn or NumPy is not guaranteed to
+            # unpickle under another, and the training machine is not the serving one.
+            # A deployment once served an empty team list because a single file raised
+            # here — Dixon-Coles and the feature GLM were fine and were never reached.
+            try:
+                model = BaseMatchModel.load(pkl_file)
+            except Exception as exc:
+                predictor.load_failures_[pkl_file.name] = f"{type(exc).__name__}: {exc}"
+                logger.exception("Could not load %s — continuing without it", pkl_file.name)
+                continue
             # Version guard for FeaturePoisson pickles
             if isinstance(model, FeaturePoisson):
                 fp_version = getattr(model, "fp_version_", 1)
@@ -314,4 +322,7 @@ class MatchPredictor:
                     continue
             predictor._models[model.name] = model
         logger.info("Loaded %d models from %s", len(predictor._models), directory)
+        if predictor.load_failures_:
+            logger.error("%d model file(s) failed to load: %s",
+                         len(predictor.load_failures_), predictor.load_failures_)
         return predictor

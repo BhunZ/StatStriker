@@ -34,20 +34,18 @@ The entire pipeline — from data collection to model retraining — runs automa
 
 ## Model Architecture
 
-Five base models are implemented. **Three of them are blended** — an ensemble is only worth its cost when its members disagree, and the other two did not.
+Three base models, chosen for disagreeing with each other rather than for being individually best.
 
-| Tier | Model | In blend | Description |
-|------|-------|----------|-------------|
-| 1 | **Dixon-Coles** | yes | Independent Poisson with rho correction for low-score draws and exponential time decay (Dixon & Coles, 1997) |
-| 2 | **Bivariate Poisson** | no | Shared latent variable lambda_3 captures goal correlation across all scorelines (Karlis & Ntzoufras, 2003) |
-| 3 | **xG Dixon-Coles** | no | Fits on a grid-searched blend of xG and actual goals for smoother, lower-variance attack/defense parameters |
-| 4 | **Feature Poisson GLM** | yes | Adds rolling form features (PPDA, xG overperformance, prior-season stats) as log-linear covariates with L2 regularization |
-| 5 | **Gradient Boost** | yes | Discriminative classifier over rolling form features — the one tier that never models goals, mapping form straight to 1X2 and calibrated by shrinkage towards the base rate |
-| 6 | **Stacked Ensemble** | — | Softmax-weighted convex combination of Tiers 1, 4 and 5, trained on out-of-fold temporal CV predictions |
+| Tier | Model | Description |
+|------|-------|-------------|
+| 1 | **Dixon-Coles** | Independent Poisson with rho correction for low-score draws and exponential time decay (Dixon & Coles, 1997) |
+| 2 | **Feature Poisson GLM** | Adds rolling form features (PPDA, xG overperformance, prior-season stats) as log-linear covariates with L2 regularization |
+| 3 | **Gradient Boost** | Discriminative classifier over rolling form features — the one tier that never models goals, mapping form straight to 1X2 and calibrated by shrinkage towards the base rate |
+| 4 | **Stacked Ensemble** | Softmax-weighted convex combination of Tiers 1-3, trained on out-of-fold temporal CV predictions |
 
 All models are evaluated using **Ranked Probability Score (RPS)** via expanding-window temporal cross-validation — no data leakage, no shuffling.
 
-Tiers 2 and 3 are kept and can still be fitted or compared with `--tiers`, but out of fold they track Dixon-Coles closely enough to be the same model written twice. Every subset of the five was scored on the same out-of-fold matches before the two were dropped, and dropping them cost nothing measurable.
+A Bivariate Poisson and an xG-driven Dixon-Coles were also built, and removed. Out of fold they tracked Dixon-Coles closely enough to be the same model written twice, so blending them cost compute and added no information. An ensemble is only worth its cost when its members disagree.
 
 ## Project Structure
 
@@ -63,11 +61,9 @@ StatStriker/
 │   └── feature_engineer.py # Rolling features, form metrics
 ├── models/                 # Prediction models
 │   ├── dixon_coles.py      # Tier 1: Classic Dixon-Coles
-│   ├── bivariate_poisson.py # Tier 2: Bivariate Poisson
-│   ├── xg_dixon_coles.py   # Tier 3: xG-augmented
-│   ├── feature_poisson.py  # Tier 4: Feature GLM
-│   ├── gradient_boost.py   # Tier 5: Gradient-boosted classifier
-│   ├── ensemble.py         # Tier 6: Stacked ensemble
+│   ├── feature_poisson.py  # Tier 2: Feature GLM
+│   ├── gradient_boost.py   # Tier 3: Gradient-boosted classifier
+│   ├── ensemble.py         # Tier 4: Stacked ensemble
 │   ├── evaluation.py       # Temporal CV + RPS scoring
 │   └── predict.py          # Unified prediction interface
 ├── app/

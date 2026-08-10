@@ -5,10 +5,14 @@ Premier League match prediction: FBRef + Understat scraping → match models ble
 stacked ensemble → FastAPI backend serving a static HTML dashboard. The whole pipeline runs
 unattended every Monday via GitHub Actions.
 
-Five base models are implemented; the shipped blend uses three — Dixon-Coles, the feature
-Poisson GLM, and a gradient-boosted classifier (`models/predict.py:ENSEMBLE_TIERS`).
-Bivariate Poisson and xG Dixon-Coles remain fittable via `--tiers` but track Dixon-Coles
-too closely to earn a place in the blend.
+Three base models: Dixon-Coles (tier 1), the feature Poisson GLM (tier 2) and a
+gradient-boosted classifier (tier 3), blended by the ensemble (tier 4). See
+`models/predict.py:_TIER_FACTORIES`.
+
+A Bivariate Poisson and an xG Dixon-Coles were removed on 2026-08-10 — out of fold they
+tracked Dixon-Coles closely enough to be the same model twice. Do not add a fourth base
+model without reading `_TIER_FACTORIES` first: with 940 out-of-fold matches the bootstrap
+cannot distinguish model subsets at all, so "it improved the log-loss" is not evidence.
 
 ## Architecture
 - `scrapers/`        — Data fetching (FBRef, Understat) via ScraperAPI
