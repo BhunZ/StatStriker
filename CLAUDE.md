@@ -77,3 +77,12 @@ python main.py --process              # Process existing raw data (merge + featu
 - **`ctx_*` columns are prior-season, not current-season.** They are constant within a
   (team, season), which looks like leakage and is not — `_load_team_context` shifts the
   season key. Do not "fix" it.
+- **Do not loosen the scikit-learn or numpy bounds in `requirements.txt` without a
+  retrain.** A fitted estimator carries references to scikit-learn's private modules. When
+  the range was open, the serving host resolved a different build from the training host
+  and both sklearn-bearing pickles died with `ModuleNotFoundError: No module named
+  '_loss'` — an error naming neither scikit-learn nor the mismatch. `tests/
+  test_api_contract.py` fails if the environment running the tests sits outside the range.
+- **`render.yaml` sets `PYTHON_VERSION: "3.12"` and the live service reports 3.14.3.** The
+  file is not what configures the running service; do not trust it when reasoning about
+  production. `GET /api/health` returns the versions actually in use.
