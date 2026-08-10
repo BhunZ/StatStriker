@@ -5,6 +5,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.api:app --host 0.0.0.0 --port $PORT
     plan: free
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.12"
+    # The Python version lives in .python-version, which both this service and the
+    # GitHub Actions job read. It used to be pinned here to "3.12" while the running
+    # service reported 3.14.3 — this file is not necessarily what configures a service
+    # that was created from the dashboard, so a value here is not evidence about
+    # production. `GET /api/health` reports the versions actually in use.

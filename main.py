@@ -569,7 +569,8 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="*",
         type=int,
         default=None,
-        help="Which model tiers to train/evaluate (1-5). Default: all.",
+        help="Which model tiers to train/evaluate (1-3, or 4 for the ensemble). "
+             "Default: all three bases plus the ensemble.",
     )
 
     # Storage backend options

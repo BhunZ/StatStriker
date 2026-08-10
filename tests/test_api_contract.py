@@ -145,6 +145,23 @@ def test_health_reports_the_versions_it_is_running(client):
     assert all(re.match(r"^\d+\.\d+", v) for v in runtime.values())
 
 
+def test_the_running_python_matches_the_pinned_one():
+    """`.python-version` is read by both the GitHub Actions job and the deployed service.
+    Whatever runs these tests is also what commits model artifacts, so if it sits on a
+    different minor version the pickles it produces are not the ones production expects.
+    """
+    import platform
+
+    pinned = (Path(__file__).resolve().parents[1] / ".python-version").read_text(
+        encoding="utf-8").strip()
+    running = ".".join(platform.python_version_tuple()[:2])
+
+    assert running == pinned, (
+        f"training on Python {running}, but .python-version pins {pinned} — artifacts "
+        f"built here may not load where they are served"
+    )
+
+
 def test_the_pinned_scikit_learn_matches_the_one_that_pickles_models():
     """requirements.txt bounds scikit-learn to a minor line. If the environment that
     trains drifts outside it, the artifacts it commits will not load where they are

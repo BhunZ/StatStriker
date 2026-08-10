@@ -5,6 +5,11 @@ on:
     # Every Monday at 06:00 UTC (1 PM in Bangkok / ICT)
     - cron: "0 6 * * 1"
   workflow_dispatch:       # Allow manual trigger from GitHub UI
+    inputs:
+      force_train:
+        description: "Retrain even if the state says it is not due (scrapes nothing)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write          # Needed for git push
@@ -20,10 +25,13 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Read from .python-version, never hardcoded here. This job commits pickled models
+      # that a different machine has to unpickle, so the version it runs on is part of the
+      # artifact. The same file is what the deployed service reads.
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version-file: ".python-version"
           cache: "pip"
 
       - name: Install dependencies
@@ -35,13 +43,21 @@ jobs:
       - name: Tests
         run: pytest -q
 
-      - name: Run pipeline (auto mode)
+      # The scheduled run is always --auto: it decides for itself whether there is new
+      # data and whether a retrain is due. force_train exists only for manual runs, so
+      # models can be regenerated on demand without waiting for fixtures to be played.
+      - name: Run pipeline
         env:
           SCRAPER_API_KEY: ${{ secrets.SCRAPER_API_KEY }}
           SCRAPER_API_KEY_SECONDARY: ${{ secrets.SCRAPER_API_KEY_SECONDARY }}
         run: |
           set +e
-          python main.py --auto
+          if [ "${{ inputs.force_train }}" == "true" ]; then
+            echo "Manual run with force_train — retraining on existing data"
+            python main.py --force-train
+          else
+            python main.py --auto
+          fi
           EXIT_CODE=$?
           echo "exit_code=$EXIT_CODE" >> "$GITHUB_ENV"
           # 0 = nothing changed, 2 = new data, 3 = retrained — all fine.
@@ -57,6 +73,21 @@ jobs:
             exit 1
           fi
           echo "Pipeline completed with exit code $EXIT_CODE"
+
+      # The gate that was missing. Models are pickled here and unpickled by the deployed
+      # API, and a scikit-learn estimator carries references to that library's internals —
+      # when the two hosts disagreed, both sklearn-bearing files died with a
+      # ModuleNotFoundError and the site served an empty team list. Verifying in the
+      # training process proves nothing, because the objects never travel through pickle.
+      # This is a fresh process reading only what is on disk, and it is the last thing to
+      # pass before anything is committed.
+      - name: Verify the artifacts load in a fresh process
+        if: env.exit_code == '2' || env.exit_code == '3'
+        run: |
+          python scripts/verify_artifacts.py || {
+            echo "::error::Trained models cannot be loaded back — refusing to commit them"
+            exit 1
+          }
 
       - name: Commit and push changes
         if: env.exit_code == '2' || env.exit_code == '3'
