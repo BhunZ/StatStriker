@@ -45,8 +45,6 @@ Three base models, chosen for disagreeing with each other rather than for being 
 
 All models are evaluated using **Ranked Probability Score (RPS)** via expanding-window temporal cross-validation — no data leakage, no shuffling.
 
-A Bivariate Poisson and an xG-driven Dixon-Coles were also built, and removed. Out of fold they tracked Dixon-Coles closely enough to be the same model written twice, so blending them cost compute and added no information. An ensemble is only worth its cost when its members disagree.
-
 ## Project Structure
 
 ```

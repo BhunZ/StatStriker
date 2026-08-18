@@ -1,7 +1,7 @@
 """
 scripts/full_system_audit.py
 -----------------------------
-Rigorous System Audit — 4 pillars of verification before Tier 5 Ensemble.
+Rigorous System Audit — 4 pillars of verification before the Tier 4 Ensemble.
 
 Pillar 1: Individual Tier Sanity Check (simplex, NaN, bounds, features)
 Pillar 2: Multi-Model Correlation Analysis (inter-tier diversity)

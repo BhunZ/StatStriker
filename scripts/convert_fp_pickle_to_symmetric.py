@@ -77,7 +77,7 @@ def main() -> None:
 
     # ---- Ensemble pickle: symmetrize its internal FP base model too ----
     # The ensemble stores its own FeaturePoisson instance inside
-    # ``base_models_``; leaving it asymmetric would mean the Tier 5
+    # ``base_models_``; leaving it asymmetric would mean the Tier 4
     # ensemble output still leaks v2 asymmetric FP predictions, which
     # defeats the point of the revert.
     if ENSEMBLE_PKL.exists():

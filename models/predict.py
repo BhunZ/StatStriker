@@ -206,7 +206,7 @@ class MatchPredictor:
             return pd.DataFrame()
 
         # Tiers 1-4 do full nested CV (re-tune hyperparameters per fold)
-        # for unbiased evaluation. Only the Ensemble (Tier 5) uses fast mode
+        # for unbiased evaluation. Only the Ensemble (Tier 4) uses fast mode
         # to avoid nested CV (CV-inside-CV), which is prohibitively slow.
         for model in models:
             if hasattr(model, "_fast_mode"):

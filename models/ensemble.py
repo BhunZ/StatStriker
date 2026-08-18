@@ -1,7 +1,7 @@
 """
 models/ensemble.py
 ------------------
-Tier 5: Stacked ensemble meta-model.
+Tier 4: Stacked ensemble meta-model.
 
 Combines Tiers 1-4 using optimised per-model weights learned on
 out-of-fold predictions from temporal cross-validation. Weights are

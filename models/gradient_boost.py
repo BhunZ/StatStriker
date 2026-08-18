@@ -1,7 +1,7 @@
 """
 models/gradient_boost.py
 ------------------------
-Tier 5 — gradient-boosted classifier over form features.
+Tier 3 — gradient-boosted classifier over form features.
 
 Every other model here is the same thing wearing different clothes: a generative Poisson
 model that estimates a scoring rate per side and reads 1X2 off the resulting grid. Out of
