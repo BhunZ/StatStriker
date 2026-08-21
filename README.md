@@ -20,9 +20,40 @@
 
 ## Overview
 
-StatStriker is a production-grade soccer match prediction system that scrapes real match data from FBRef and Understat, engineers predictive features, blends three complementary models into a stacked ensemble, and serves predictions through an interactive web dashboard.
+**Football prediction is easy to do badly and hard to check.** A model trained on a season of
+results will happily report 60% accuracy and be worthless, because it learned from information that
+did not exist when the match kicked off. Nothing in the output looks wrong.
 
-The entire pipeline — from data collection to model retraining — runs automatically every week via GitHub Actions.
+StatStriker is built around that problem. It scrapes match data from two independent sources,
+engineers features under a strict rule that nothing may see the future, blends three deliberately
+dissimilar models, and scores everything against a base-rate baseline so a number always has
+something to be compared to.
+
+It then runs itself. Scraping, validation, retraining and release happen weekly through GitHub
+Actions, and the live API serves whatever last passed.
+
+**What it is for:** a worked example of shipping a model that keeps working after you stop
+watching it — versioned artifacts, quality gates, leakage guards, and a public endpoint that
+reports its own health.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    F[FBRef] --> R[Entity resolution<br/>two sources, one club]
+    U[Understat] --> R
+    R --> Q{Quality gate<br/>scrape sane?}
+    Q -->|no| X[Fail the build<br/>commit nothing]
+    Q -->|yes| FE[Feature engineering<br/>no future data]
+    FE --> M[Three base models]
+    M --> E[Stacked ensemble]
+    E --> CV[Temporal CV<br/>vs base rate]
+    CV --> A[(Model artifacts<br/>pinned runtime)]
+    A --> API[FastAPI + dashboard]
+```
+
+The whole chain runs weekly in GitHub Actions. Artifacts are built in CI on a pinned runtime and
+must reload in a fresh process before release.
 
 ## Features
 
@@ -44,6 +75,54 @@ Three base models, chosen for disagreeing with each other rather than for being 
 | 4 | **Stacked Ensemble** | Softmax-weighted convex combination of Tiers 1-3, trained on out-of-fold temporal CV predictions |
 
 All models are evaluated using **Ranked Probability Score (RPS)** via expanding-window temporal cross-validation — no data leakage, no shuffling.
+
+## Challenges
+
+The four problems that shaped the design. Each one is the kind that produces no error message.
+
+### Two sources spell the same club differently
+
+Manchester United, Man United, Man Utd. Joining on a name that does not match exactly gives one
+club another club's history — and **the row count stays correct**, so nothing signals a problem.
+Entity resolution runs on normalised names with fuzzy matching, and a test asserts that two
+distinct clubs are never merged into one.
+
+### A feature can see the future without looking like it
+
+Season-total statistics are the obvious trap: a rolling average that includes the match being
+predicted will produce excellent accuracy and no warning. Every feature is built from matches
+strictly before kick-off, evaluation uses expanding-window temporal cross-validation rather than
+shuffled k-fold, and the test suite contains explicit guards for the patterns that reintroduce
+leakage.
+
+### A model that reloads on one machine may not reload on another
+
+A serialised model carries references to library internals. When the training host and the serving
+host disagree on a version, loading fails on a path nobody tested — and it fails in production, not
+in CI. Artifacts are therefore built in CI on a **pinned runtime**, and each one must reload
+successfully in a fresh process before release. The health endpoint reports the runtime versions it
+is actually running, so a mismatch is visible rather than inferred.
+
+### More models is not more information
+
+The blend originally carried five. Measured out of fold, two of them tracked Dixon-Coles closely
+enough to be the same model written twice — so they cost compute and added nothing. **An ensemble
+is only worth its cost when its members disagree**, which is why the three that remain were chosen
+for being dissimilar rather than for being individually best.
+
+## Why these tools
+
+| Choice | Instead of | Reason |
+|---|---|---|
+| **Two sources** | One source | A single source cannot be checked. Disagreement between two is the only signal that either is wrong |
+| **Dixon-Coles** | Only a classifier | It models goals, so it produces a full scoreline distribution rather than three probabilities |
+| **Gradient boosting** | A third Poisson variant | Deliberately the one member that never models goals — it fails differently from the others |
+| **RPS** | Accuracy | Football has three ordered outcomes. Accuracy treats a confident wrong answer the same as an uncertain one; RPS does not |
+| **Temporal CV** | k-fold | Shuffling lets the model train on the future. The number it produces would be higher and meaningless |
+| **Parquet** | CSV | Typed and columnar, so a scraped float does not silently become a string between runs |
+| **CI-built artifacts** | Training locally | The training and serving runtimes must be identical, and CI is the only place that can be guaranteed |
+| **FastAPI** | Flask | Type hints validate the request shape, and the schema documents itself |
+| **Render** | A VM | The service is small and the deployment should not need maintaining |
 
 ## Project Structure
 
