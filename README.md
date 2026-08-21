@@ -40,16 +40,16 @@ reports its own health.
 
 ```mermaid
 flowchart LR
-    F[FBRef] --> R[Entity resolution<br/>two sources, one club]
+    F[FBRef] --> R["Entity resolution<br/>two sources, one club"]
     U[Understat] --> R
-    R --> Q{Quality gate<br/>scrape sane?}
-    Q -->|no| X[Fail the build<br/>commit nothing]
-    Q -->|yes| FE[Feature engineering<br/>no future data]
+    R --> Q{"Quality gate<br/>scrape sane?"}
+    Q -->|no| X["Fail the build<br/>commit nothing"]
+    Q -->|yes| FE["Feature engineering<br/>no future data"]
     FE --> M[Three base models]
     M --> E[Stacked ensemble]
-    E --> CV[Temporal CV<br/>vs base rate]
-    CV --> A[(Model artifacts<br/>pinned runtime)]
-    A --> API[FastAPI + dashboard]
+    E --> CV["Temporal CV<br/>vs base rate"]
+    CV --> A[("Model artifacts<br/>pinned runtime")]
+    A --> API["FastAPI + dashboard"]
 ```
 
 The whole chain runs weekly in GitHub Actions. Artifacts are built in CI on a pinned runtime and
